@@ -1,0 +1,205 @@
+{
+  "project_name": "T.E.R.E.S.A. Mobile App",
+  "theme": "Light",
+  "archetype": "Organic & Earthy + Swiss & High-Contrast (Adapted for Medical Serenity)",
+  "aesthetic_inspiration": "Mother Teresa habit (White with pure blue trim), Apple Health, Withings Health Mate",
+  "core_principles": [
+    "Hospital-grade premium feel",
+    "Generous white space to convey cleanliness and clarity",
+    "Soft, confident blue accents over stark white surfaces",
+    "Large, legible typographic hierarchy for medical data",
+    "Accessible and highly discernible status colors"
+  ],
+  "typography": {
+    "font_family": "System",
+    "instructions": "Use React Native's default 'System' font for iOS San Francisco and Android Roboto to maintain platform-native premium health app familiarity. Do not use custom fonts unless absolutely required.",
+    "scale": {
+      "h1": { "fontSize": 34, "fontWeight": "700", "lineHeight": 41, "letterSpacing": 0.4 },
+      "h2": { "fontSize": 28, "fontWeight": "700", "lineHeight": 34, "letterSpacing": 0.4 },
+      "h3": { "fontSize": 22, "fontWeight": "600", "lineHeight": 28, "letterSpacing": 0.35 },
+      "h4": { "fontSize": 18, "fontWeight": "600", "lineHeight": 24, "letterSpacing": 0.3 },
+      "body_large": { "fontSize": 16, "fontWeight": "400", "lineHeight": 24, "letterSpacing": -0.2 },
+      "body": { "fontSize": 14, "fontWeight": "400", "lineHeight": 20, "letterSpacing": -0.1 },
+      "caption": { "fontSize": 12, "fontWeight": "500", "lineHeight": 16, "letterSpacing": 0 },
+      "metric_large": { "fontSize": 48, "fontWeight": "700", "lineHeight": 56, "letterSpacing": -1.0 }
+    }
+  },
+  "colors": {
+    "primary": {
+      "base": "#2D6CDF",
+      "dark": "#0D47A1",
+      "light": "#9CC6FF",
+      "soft": "#E6F0FF"
+    },
+    "background": {
+      "app": "#F8FBFF",
+      "card": "#FFFFFF",
+      "overlay": "rgba(10, 25, 48, 0.4)"
+    },
+    "text": {
+      "primary": "#0A1930",
+      "secondary": "#64748B",
+      "disabled": "#94A3B8",
+      "inverse": "#FFFFFF"
+    },
+    "status": {
+      "blue_done": "#2D6CDF",
+      "green_good": "#10B981",
+      "yellow_observe": "#F59E0B",
+      "red_alert": "#EF4444"
+    },
+    "border": {
+      "light": "#E2E8F0",
+      "focus": "#9CC6FF"
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "2xl": 48,
+    "container_padding": 24
+  },
+  "component_styles": {
+    "shadows": {
+      "soft_card": {
+        "shadowColor": "#0A1930",
+        "shadowOffset": { "width": 0, "height": 4 },
+        "shadowOpacity": 0.04,
+        "shadowRadius": 12,
+        "elevation": 2
+      },
+      "floating_action": {
+        "shadowColor": "#2D6CDF",
+        "shadowOffset": { "width": 0, "height": 8 },
+        "shadowOpacity": 0.2,
+        "shadowRadius": 16,
+        "elevation": 6
+      }
+    },
+    "border_radius": {
+      "sm": 8,
+      "md": 12,
+      "card": 24,
+      "pill": 9999,
+      "circle": 9999
+    },
+    "buttons": {
+      "primary": {
+        "backgroundColor": "#2D6CDF",
+        "borderRadius": 9999,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "alignItems": "center"
+      },
+      "secondary": {
+        "backgroundColor": "#E6F0FF",
+        "borderRadius": 9999,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "alignItems": "center"
+      },
+      "outline": {
+        "backgroundColor": "transparent",
+        "borderColor": "#2D6CDF",
+        "borderWidth": 1.5,
+        "borderRadius": 9999,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "alignItems": "center"
+      }
+    },
+    "camera_cta": {
+      "width": 80,
+      "height": 80,
+      "borderRadius": 40,
+      "backgroundColor": "#2D6CDF",
+      "justifyContent": "center",
+      "alignItems": "center",
+      "shadow": "floating_action",
+      "ring_chart_wrapper": "Wrap CTA in a circular SVG progress indicator representing healing percentage"
+    }
+  },
+  "libraries": {
+    "icons": "lucide-react-native",
+    "charts": "victory-native or react-native-svg-charts",
+    "navigation": "@react-navigation/native (Bottom Tabs + Drawer)"
+  },
+  "screens": {
+    "Global": {
+      "TopBar": "Sticky header. Hamburger on left. T.E.R.E.S.A. text/logo centered. Bell icon (with red dot absolute positioned for alerts) on right. Background #FFFFFF, zIndex high, soft bottom border/shadow.",
+      "BottomTabs": "SafeArea handled. Icons for Home, Calendar, Alerts, Profile. Active tint #2D6CDF, inactive tint #94A3B8. Background #FFFFFF."
+    },
+    "Login": {
+      "layout": "Minimalist. Centered app logo/name. Email and password inputs (border #E2E8F0, focus #2D6CDF). Large Primary 'Entrar' button. White background."
+    },
+    "Home": {
+      "layout": "Scrollable. Background #F8FBFF.",
+      "sections": [
+        "Environmental Cards: Row of two cards (Temp & Humidity). Large metric numbers (metric_large typography).",
+        "Chart Card: Line chart for Temperature. Top right segmented control (24h | 7d | 30d). Smooth bezier curve line chart with gradient fill below line.",
+        "Primary Action: Centered large Circular Camera button with pulsing animation and healing percentage SVG ring chart around it.",
+        "Quick Alerts: Small card list below camera.",
+        "Quick Contacts: Horizontal scroll of rounded cards with doctor/nurse avatars and a phone icon CTA."
+      ]
+    },
+    "ConnectEquipment": {
+      "layout": "Accessed via drawer.",
+      "elements": [
+        "Live status indicator at top (Green/Red dot + text).",
+        "Step-by-step instructions (1-9) in a vertical timeline format.",
+        "Primary 'Search Devices' button.",
+        "List of found BLE devices as modern cards with 'Connect' buttons."
+      ]
+    },
+    "Calendar": {
+      "layout": "Monthly grid view at top.",
+      "indicators": "Dots under dates. Blue (Session Done), Green (Good Progress), Yellow (Observation), Red (Alert).",
+      "day_detail": "Card below calendar showing selected date details: Temp/Humidity average, session duration, photos grid, mini trend chart."
+    },
+    "Notices": {
+      "layout": "Vertical list of cards.",
+      "card_structure": "Left: Status Icon (color-coded). Middle: Title (bold) + Description (body) + Timestamp (caption). Status badge on right."
+    },
+    "Profile": {
+      "layout": "Header with Toggle Switch (Paciente | Médico).",
+      "patient_view": "Avatar, Name, Age. Treatment Summary cards. Healing progress gauge. Photo history grid.",
+      "doctor_view": "Avatar, Name, CRM, Specialty. Search bar. List of patients to switch active context."
+    },
+    "WoundAnalysis": {
+      "layout": "Full screen overlay/modal result.",
+      "elements": "Captured photo at top with subtle overlay mask. Data points below: Estimated Area, Predominant Color, Inflammation level, Granulation, Time Remaining. Large overall Healing % gauge at bottom."
+    }
+  },
+  "media": {
+    "instructions": "Use these placeholder images for mock data, empty states, or profile avatars to ensure a premium feel.",
+    "images": [
+      {
+        "category": "empty_state_medical",
+        "url": "https://images.unsplash.com/photo-1631507623095-c710d184498f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwyfHxtaW5pbWFsJTIwbWVkaWNhbCUyMGNsaW5pY3xlbnwwfHx8fDE3ODMzODIyMDN8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Clean, minimal medical clinic aesthetic for empty states."
+      },
+      {
+        "category": "healing_therapy",
+        "url": "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwyfHxzZXJlbmUlMjBoZWFsaW5nJTIwcGh5c2ljYWwlMjB0aGVyYXB5fGVufDB8fHx8MTc4MzM4MjIwM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Serene healing context for onboarding or banners."
+      },
+      {
+        "category": "doctor_avatar_1",
+        "url": "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBkb2N0b3IlMjBwb3J0cmFpdCUyMGNsZWFufGVufDB8fHx8MTc4MzM4MjIwM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Clean portrait of a professional doctor for profile mockup."
+      },
+      {
+        "category": "doctor_avatar_2",
+        "url": "https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBkb2N0b3IlMjBwb3J0cmFpdCUyMGNsZWFufGVufDB8fHx8MTc4MzM4MjIwM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Clean portrait of a female professional doctor for profile mockup."
+      }
+    ]
+  },
+  "testing_rules": {
+    "attribute": "testID",
+    "instructions": "All interactive and key informational elements MUST include a 'testID' attribute (React Native equivalent of data-testid). Use kebab-case, role-based names (e.g., testID='login-submit-button')."
+  }
+}
