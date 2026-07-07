@@ -1,0 +1,37 @@
+{
+  "summary": "Regression verification of the 6 endpoints that received a MongoDB .limit() clause (deployment blocker fix). Added dedicated regression suite /app/backend/tests/test_limits_regression.py — 17 passed, 1 skipped (wound-photo analyze, intentionally skipped per review). Also re-ran the full existing suite (backend_test.py) with the analyze test deselected: 27/27 passed. All 6 endpoints (/api/readings, /api/sessions, /api/alerts, /api/contacts, /api/wound-photos, /api/doctor/patients) still return correct data, correct filtering (range=24h|7d|30d), correct sort order, and correct role enforcement (403 for patient on /doctor/patients). Bulk-create-then-list confirms the .limit() clauses do NOT truncate when item counts are below the cap. Auth smoke (register/login/auth/me) still passes. No regressions.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_limits_regression.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_limits_regression.xml",
+    "/app/test_reports/pytest/pytest_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py limits verified at expected lines: readings=2000 (L353), sessions=200 (L387), alerts=200 (L409), contacts=500 (L447), wound_photos=100 (L543), doctor/patients=1000 (L701). All limits sit AFTER the .sort() call so ordering is preserved before the cap is applied — correct MongoDB idiom.",
+    "The wound_photos limit of 100 is intentionally lower than the raw storage cap; if base64 payloads remain in the DB, this is prudent (large documents). Consider a separate paginated endpoint if patients accumulate >100 photos over time.",
+    "No index hints supplied on .sort() fields — with 1000s of readings per user, /api/readings could benefit from a compound index on (user_id, timestamp). Not a blocker."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_limits_regression.py (new — 18 regression tests, 17 pass + 1 intentional skip)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 new limits-regression tests + 27/27 existing tests, wound analyze deselected per review)",
+    "frontend": "not tested (per review — backend-only fix)"
+  },
+  "seed_data_creation": "Ephemeral TEST_ users and TEST_ contacts/alerts/readings/sessions created per test-module. All namespaced with test_limit_ prefix for easy cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL: EXPO_PUBLIC_BACKEND_URL=https://wound-healing-1.preview.emergentagent.com. Two regression suites are now maintained: (1) backend_test.py — full CRUD + auth + calendar + doctor + wound-analysis; (2) test_limits_regression.py — focused on the 6 .limit()ed endpoints. Run with: `EXPO_PUBLIC_BACKEND_URL=<url> pytest backend/tests/ -v`. To skip the expensive Emergent LLM wound-analyze test add: `--deselect backend/tests/backend_test.py::TestWoundAnalysis`.",
+  "rca_of_issue": "N/A — this iteration is a regression verification, not a bug fix. The deployment agent's fix (adding .limit() clauses to 6 unbounded MongoDB queries) is confirmed non-breaking: all endpoints still return correct data, ordering is preserved, filters (range parameter, role-based auth) still work, and item counts below the cap are not truncated."
+}
