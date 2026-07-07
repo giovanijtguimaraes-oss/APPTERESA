@@ -350,7 +350,7 @@ async def get_readings(
     cursor = db.readings.find(
         {"user_id": current["id"], "timestamp": {"$gte": since}},
         {"_id": 0},
-    ).sort("timestamp", 1)
+    ).sort("timestamp", 1).limit(2000)
     return [Reading(**r) async for r in cursor]
 
 
@@ -384,7 +384,7 @@ async def create_session(payload: SessionCreate, current=Depends(get_current_use
 
 @api.get("/sessions", response_model=List[SessionRecord])
 async def list_sessions(current=Depends(get_current_user)):
-    cursor = db.sessions.find({"user_id": current["id"]}, {"_id": 0}).sort("started_at", -1)
+    cursor = db.sessions.find({"user_id": current["id"]}, {"_id": 0}).sort("started_at", -1).limit(200)
     return [SessionRecord(**s) async for s in cursor]
 
 
@@ -406,7 +406,7 @@ async def create_alert(payload: AlertCreate, current=Depends(get_current_user)):
 
 @api.get("/alerts", response_model=List[Alert])
 async def list_alerts(current=Depends(get_current_user)):
-    cursor = db.alerts.find({"user_id": current["id"]}, {"_id": 0}).sort("timestamp", -1)
+    cursor = db.alerts.find({"user_id": current["id"]}, {"_id": 0}).sort("timestamp", -1).limit(200)
     return [Alert(**a) async for a in cursor]
 
 
@@ -444,7 +444,7 @@ async def add_contact(payload: ContactCreate, current=Depends(get_current_user))
 
 @api.get("/contacts", response_model=List[Contact])
 async def list_contacts(current=Depends(get_current_user)):
-    cursor = db.contacts.find({"user_id": current["id"]}, {"_id": 0}).sort("name", 1)
+    cursor = db.contacts.find({"user_id": current["id"]}, {"_id": 0}).sort("name", 1).limit(500)
     return [Contact(**c) async for c in cursor]
 
 
@@ -540,7 +540,7 @@ async def analyze_and_save(payload: WoundPhotoCreate, current=Depends(get_curren
 
 @api.get("/wound-photos", response_model=List[WoundPhotoResponse])
 async def list_photos(current=Depends(get_current_user)):
-    cursor = db.wound_photos.find({"user_id": current["id"]}, {"_id": 0}).sort("timestamp", -1)
+    cursor = db.wound_photos.find({"user_id": current["id"]}, {"_id": 0}).sort("timestamp", -1).limit(100)
     out: List[WoundPhotoResponse] = []
     async for p in cursor:
         analysis = None
@@ -698,7 +698,7 @@ async def list_patients(
     query: dict[str, Any] = {"role": "patient"}
     if q:
         query["name"] = {"$regex": q, "$options": "i"}
-    cursor = db.users.find(query, {"_id": 0, "password_hash": 0}).sort("name", 1)
+    cursor = db.users.find(query, {"_id": 0, "password_hash": 0}).sort("name", 1).limit(1000)
     return [user_to_public(u) async for u in cursor]
 
 
