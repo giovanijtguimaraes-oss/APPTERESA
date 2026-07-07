@@ -1,24 +1,38 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "T.E.R.E.S.A.",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
-    "userInterfaceStyle": "automatic",
+    "scheme": "teresa",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.woundhealing.s4m7rd"
+      "bundleIdentifier": "com.emergent.woundhealing.s4m7rd",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Fotografar feridas para análise clínica",
+        "NSPhotoLibraryUsageDescription": "Selecionar fotos da ferida para análise",
+        "NSBluetoothAlwaysUsageDescription": "Conectar ao equipamento T.E.R.E.S.A.",
+        "NSBluetoothPeripheralUsageDescription": "Conectar ao equipamento T.E.R.E.S.A.",
+        "UIBackgroundModes": ["bluetooth-central"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.woundhealing.s4m7rd"
+      "package": "com.emergent.woundhealing.s4m7rd",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -33,7 +47,27 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#FFFFFF"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Fotografar feridas para análise clínica"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Selecionar fotos da ferida para análise"
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "Conectar ao equipamento T.E.R.E.S.A."
         }
       ]
     ],

@@ -1,32 +1,40 @@
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/src/contexts/AuthContext';
 import { colors } from '@/src/theme/tokens';
 
-export default function Index() {
+export default function AppLayout() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
-    if (user) {
-      router.replace('/(app)/(tabs)/home');
-    } else {
+    if (!loading && !user) {
       router.replace('/login');
     }
-  }, [user, loading, router]);
+  }, [loading, user, router]);
+
+  if (loading || !user) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color={colors.primary} />
-    </View>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bg },
+      }}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  center: {
     flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',

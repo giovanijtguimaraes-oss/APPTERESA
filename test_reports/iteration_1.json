@@ -1,0 +1,48 @@
+{
+  "summary": "Full backend + frontend testing of T.E.R.E.S.A. MVP. All 28 pytest backend tests PASS (100%) — auth, readings, sessions, alerts, contacts, calendar, doctor role, and wound-photo AI analysis via Emergent LLM Key (GPT-5.2 vision) all functional. Frontend E2E on mobile viewport (390x844) confirmed: register→login→home flow, bottom tabs (Home/Calendário/Avisos/Perfil) navigation, drawer with all 5 items (Configurações/Conectar/Sobre/Ajuda/Privacidade), TopBar hamburger+bell, calendar prev/next with legend, empty states, Edit Profile modal (7 fields+Salvar), Add Contact modal, logout — all rendering & functional. React-Native-Web deprecation warnings present (shadow*, pointerEvents) — non-blocking but should be addressed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EditProfile modal Salvar button", "issue": "No testID on the primary 'Salvar' button inside edit profile modal — hard for E2E tests to verify save flow", "testID": "missing (suggest btn-save-profile)", "priority": "LOW"},
+      {"component": "AddContact modal Adicionar button", "issue": "No testID on 'Adicionar' button inside new-contact modal", "testID": "missing (suggest btn-submit-contact)", "priority": "LOW"},
+      {"component": "EditProfile modal close (X)", "issue": "Close icon inside modal has no testID", "testID": "missing (suggest btn-close-modal)", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "EditProfile modal", "issues": ["TextInputs render as empty pill shapes without visible border/placeholder value — user may not realize the field is tappable until focused. Consider adding placeholder text or a subtle border."]}
+    ],
+    "react_native_issues": [
+      {"component": "Styles (many)", "issue": "React-Native-Web deprecation warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Emitted repeatedly on every screen load. Reference: any StyleSheet using shadowColor/shadowOffset/shadowOpacity/shadowRadius (e.g. Card.tsx, home.tsx metric cards)."},
+      {"component": "Props (RNW)", "issue": "React-Native-Web deprecation warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Likely inside AppDrawer backdrop / Modal wrappers. Reference: /app/frontend/src/components/AppDrawer.tsx (backdrop View)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: replace deprecated `shadow*` StyleSheet props with `boxShadow` for React-Native-Web compatibility (visual identical on native, silences RNW warnings).",
+    "Optional: replace `pointerEvents` prop with `style={{pointerEvents:'...'}}` on the AppDrawer backdrop and any Modal wrappers.",
+    "Optional (nice-to-have for future tests): add testIDs to primary modal buttons — Salvar (edit profile), Adicionar (new contact), and modal close (X) icons.",
+    "Optional UX: give the Edit Profile TextInputs a visible border or placeholder text so users see the tappable area."
+  ],
+  "critical_code_review_comments": [
+    "server.py: correctly excludes MongoDB `_id` in all reads. bcrypt + JWT auth, env-var driven, no hardcoded secrets. Well structured (~730 lines) — still within acceptable range but approaching the 700-line split threshold if more endpoints are added.",
+    "Frontend: all interactive elements have testID on primary buttons/tabs/drawer; only nested modal-primary buttons lack them (see ui_bugs).",
+    "Frontend uses process.env.EXPO_PUBLIC_BACKEND_URL correctly for the API base; no hardcoded URLs found.",
+    "All text is wrapped in <Text>; StyleSheet.create used throughout; no HTML div/span/p in RN screens."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new — 28 pytest tests)",
+    "/app/test_reports/pytest/pytest_results.xml (new — JUnit output)"
+  ],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "100% (all screens & flows verified)"},
+  "seed_data_creation": "No persistent seed. Ephemeral TEST_/e2e_ users created during pytest and Playwright runs; they persist in MongoDB (teresa_app.users) but are namespaced by prefix.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL: https://wound-healing-1.preview.emergentagent.com/api. Frontend served at same origin. All /api routes tested & passing. Wound-photo analyze endpoint DOES successfully call Emergent LLM Key GPT-5.2 vision and returns structured JSON (occasionally litellm may report 'Budget exceeded' — transient; retry). Use a real JPEG from /tmp/wound_small.jpg (300x169 photo from Unsplash) for analyze tests — solid-color images are not allowed per /app/image_testing.md. Playwright: use mobile viewport 390x844 and testIDs listed in the grep output for each screen.",
+  "rca_of_issue": "No functional issues detected. Only two non-blocking React-Native-Web deprecation warnings and three missing testIDs on modal primary buttons — all Optional / LOW priority."
+}
