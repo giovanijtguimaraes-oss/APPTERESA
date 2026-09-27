@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -30,6 +30,7 @@ import {
   type Reading,
   type WoundPhoto,
 } from '@/src/services/api';
+import { bleService, type TeresaTelemetry } from '@/src/services/ble';
 import { colors, radii, shadows, spacing, typography } from '@/src/theme/tokens';
 
 type RangeKey = '24h' | '7d' | '30d';
@@ -76,6 +77,44 @@ export default function HomeScreen() {
       setLoading(false);
     })();
   }, [loadAll]);
+
+  // ------------------------------------------------------------
+  // Live telemetry from ESP32 (TERESA01) via BLE.
+  // When connected, updates cards + chart in real time and
+  // persists a reading to the backend at most once every 30s.
+  // ------------------------------------------------------------
+  const lastPersistRef = useRef(0);
+  useEffect(() => {
+    return bleService.onTelemetry((t: TeresaTelemetry) => {
+      const live: Reading = {
+        id: `live-${Date.now()}`,
+        user_id: user?.id ?? '',
+        temperature_c: t.temperature_c,
+        humidity_pct: t.humidity_pct,
+        timestamp: t.received_at,
+      };
+      setLatest(live);
+      setReadings((prev) => {
+        const next = [...prev, live];
+        // Cap in-memory buffer so the chart stays responsive.
+        return next.length > 300 ? next.slice(-300) : next;
+      });
+
+      const now = Date.now();
+      if (now - lastPersistRef.current > 30_000) {
+        lastPersistRef.current = now;
+        api
+          .post('/readings', {
+            temperature_c: t.temperature_c,
+            humidity_pct: t.humidity_pct,
+            timestamp: t.received_at,
+          })
+          .catch(() => {
+            // Silent — the value is already shown live in the UI.
+          });
+      }
+    });
+  }, [user?.id]);
 
   async function onRefresh() {
     setRefreshing(true);

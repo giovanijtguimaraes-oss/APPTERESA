@@ -1,0 +1,37 @@
+{
+  "summary": "Full regression on the T.E.R.E.S.A. app after real-BLE integration for the ESP32 'TERESA01'. Backend: 27/27 backend_test.py tests pass (auth, readings + range=24h/7d/30d with .limit(2000), sessions, alerts, contacts, calendar, doctor). Wound-analyze intentionally deselected (Emergent LLM, unchanged). Manual curl: POST /api/readings (temperature_c + humidity_pct + timestamp) accepted and returned by GET /api/readings?range=24h. Frontend: Login screen renders and login (joao@teste.com/senha123) works. Home renders with metric-temperature and metric-humidity cards populated (38.5°C / 52% from persisted readings), temperature chart with 24h/7d/30d control, wound-analysis camera button. Bottom tabs (Início/Calendário/Avisos/Perfil) present. Drawer (topbar-menu) opens showing 5 items: Configurações, Conectar equipamento, Sobre o projeto, Ajuda, Política de privacidade. Connect screen shows the required strings: 'Procurando TERESA01…' (empty state), step 2 mentions 'TERESA01', step 6 says 'Selecione TERESA01 na lista', step 9 mentions 'telemetria'. BLE-not-supported warning shown on web (testID ble-not-supported). btn-scan is tappable on web and does NOT crash (react-native-ble-plx lazy-load silently returns isAvailable=false). ZERO console errors, ZERO pageerrors after full navigation Home→Drawer→Connect→Scan.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/login.tsx", "issue": "Login inputs use testIDs 'login-email' / 'login-password' / 'login-submit' (found and used). No bug — informational only.", "testID": "login-email", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iter3.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "src/services/ble.ts: lazy require of react-native-ble-plx inside tryLoadManager() is correctly wrapped in try/catch and gated by Platform.OS !== 'web' — verified to not throw on web preview.",
+    "src/services/ble.ts: TARGET_DEVICE_NAME='TERESA01' filter uses upper.startsWith(TARGET_DEVICE_NAME) — permissive enough to accept 'TERESA01_XX' variants while still gating out unrelated peripherals.",
+    "src/services/ble.ts: connection is only marked 'connected' after first valid telemetry frame (subscribeTelemetry callback) — matches project requirement.",
+    "app/(app)/connect.tsx: all 4 required strings present (line 25 'TERESA01', line 29 'Selecione TERESA01', line 32 'telemetria', line 118 'Procurando TERESA01…').",
+    "app/(app)/(tabs)/home.tsx: bleService.onTelemetry subscription at line 88 is wrapped in useEffect cleanup — no memory leak risk. Import at line 33 does NOT trigger the native BleManager (lazy)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (27/27 non-LLM tests pass)",
+    "frontend": "100% (Login, Home, tabs, Drawer, Connect screen, scan button — all verified on mobile viewport 390x844, zero console errors)"
+  },
+  "seed_data_creation": "One ephemeral TEST_ reading posted via curl (temperature_c=37.7, humidity_pct=61.3) against joao@teste.com to prove POST→GET /api/readings?range=24h round-trip still works. Existing joao@teste.com account confirmed present.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "BLE cannot be tested with real hardware in the web preview — the code path is verified only for graceful fallback. Real device test requires an EAS native build with react-native-ble-plx and the ESP32 flashed per /app/ESP32_FIRMWARE.md. Frontend uses EXPO_PUBLIC_BACKEND_URL=https://wound-healing-1.preview.emergentagent.com. Test creds joao@teste.com / senha123 (patient). Login testIDs are 'login-email' / 'login-password' / 'login-submit'; drawer opens via 'topbar-menu'; Connect screen has 'btn-scan' and 'ble-not-supported' testIDs.",
+  "rca_of_issue": "N/A — regression verification only. All requested checks pass: (1) backend POST/GET /api/readings still work, (2) auth endpoints intact, (3) Home renders with BLE import present and no runtime crash (lazy require of react-native-ble-plx returns isAvailable=false on web), (4) Connect screen shows all 4 required TERESA01/telemetria strings, (5) Drawer still lists 5 items, (6) Bottom-tab nav intact, (7) manual POST /api/readings appears in GET /api/readings?range=24h and thus feeds Home via loadAll."
+}

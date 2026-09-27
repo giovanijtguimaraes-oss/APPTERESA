@@ -22,14 +22,14 @@ import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 
 const STEPS = [
   'Ative o Bluetooth no seu iPhone.',
-  'Ligue o equipamento T.E.R.E.S.A.',
+  'Ligue o equipamento T.E.R.E.S.A. (nome BLE “TERESA01”).',
   'Aguarde o LED de pareamento acender.',
   'Abra o aplicativo T.E.R.E.S.A.',
   'Toque em “Buscar dispositivos” abaixo.',
-  'Selecione o equipamento na lista.',
+  'Selecione TERESA01 na lista de dispositivos encontrados.',
   'Autorize a conexão Bluetooth quando solicitado.',
-  'Aguarde a confirmação de pareamento.',
-  'Equipamento pronto para uso!',
+  'Aguarde os primeiros dados chegarem (temperatura + umidade).',
+  'Equipamento conectado e recebendo telemetria!',
 ];
 
 export default function ConnectScreen() {
@@ -115,9 +115,10 @@ export default function ConnectScreen() {
           {devices.length === 0 ? (
             <View style={styles.emptyDevices}>
               <Ionicons name="bluetooth-outline" size={26} color={colors.textDisabled} />
-              <Text style={styles.emptyText}>Nenhum dispositivo encontrado ainda</Text>
+              <Text style={styles.emptyText}>Procurando TERESA01…</Text>
               <Text style={styles.emptyHint}>
-                Certifique-se de que o equipamento está ligado e em modo de pareamento.
+                Certifique-se de que o equipamento T.E.R.E.S.A. (nome BLE
+                “TERESA01”) está ligado e em modo de pareamento.
               </Text>
             </View>
           ) : (
