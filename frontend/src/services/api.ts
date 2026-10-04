@@ -66,7 +66,7 @@ export const api = {
 };
 
 // ============ Types ============
-export type Role = 'patient' | 'doctor';
+export type Role = 'doctor' | 'patient_monitored' | 'patient_autonomous';
 
 export interface User {
   id: string;
@@ -74,6 +74,7 @@ export interface User {
   name: string;
   role: Role;
   photo_base64?: string | null;
+  doctor_id?: string | null;
   age?: number | null;
   sex?: string | null;
   lesion_type?: string | null;
@@ -88,6 +89,7 @@ export interface User {
   crm?: string | null;
   specialty?: string | null;
   hospital?: string | null;
+  phone?: string | null;
   created_at: string;
 }
 
@@ -96,6 +98,7 @@ export interface Reading {
   user_id: string;
   temperature_c: number;
   humidity_pct: number;
+  state_system?: string | null;
   timestamp: string;
 }
 
@@ -117,6 +120,8 @@ export interface AlertItem {
   description: string;
   category: 'system' | 'device' | 'medical' | 'environmental' | 'update' | 'protocol';
   read: boolean;
+  sender_id?: string | null;
+  sender_name?: string | null;
   timestamp: string;
 }
 
@@ -139,11 +144,23 @@ export interface WoundAnalysis {
   notes: string;
 }
 
+export interface WoundFeedback {
+  id: string;
+  photo_id: string;
+  patient_id: string;
+  doctor_id: string;
+  doctor_name: string;
+  rating: number;
+  comment?: string | null;
+  created_at: string;
+}
+
 export interface WoundPhoto {
   id: string;
   image_base64: string;
   analysis?: WoundAnalysis | null;
   timestamp: string;
+  feedback?: WoundFeedback | null;
 }
 
 export interface DaySummary {
@@ -164,3 +181,16 @@ export type MonthDayStatus = {
   warning: boolean;
   good: boolean;
 };
+
+export interface PatientFullData {
+  patient: User;
+  latest_reading: Reading | null;
+  photos: WoundPhoto[];
+  sessions: SessionRecord[];
+  alerts: AlertItem[];
+  stats: {
+    photo_count: number;
+    session_count: number;
+    latest_healing: number | null;
+  };
+}

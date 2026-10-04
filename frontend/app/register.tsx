@@ -22,7 +22,9 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'patient' | 'doctor'>('patient');
+  const [role, setRole] = useState<'patient_monitored' | 'patient_autonomous' | 'doctor'>(
+    'patient_monitored',
+  );
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
 
@@ -67,19 +69,35 @@ export default function RegisterScreen() {
         <View style={styles.card}>
           <View style={styles.roleWrap} testID="register-role-toggle">
             <Pressable
-              onPress={() => setRole('patient')}
-              style={[styles.roleBtn, role === 'patient' && styles.roleActive]}
-              testID="register-role-patient"
+              onPress={() => setRole('patient_monitored')}
+              style={[styles.roleBtn, role === 'patient_monitored' && styles.roleActive]}
+              testID="register-role-monitored"
             >
               <Ionicons
-                name="person-outline"
-                size={18}
-                color={role === 'patient' ? colors.surface : colors.textSecondary}
+                name="pulse-outline"
+                size={16}
+                color={role === 'patient_monitored' ? colors.surface : colors.textSecondary}
               />
               <Text
-                style={[styles.roleText, role === 'patient' && styles.roleTextActive]}
+                style={[styles.roleText, role === 'patient_monitored' && styles.roleTextActive]}
               >
-                Paciente
+                Monitorado
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setRole('patient_autonomous')}
+              style={[styles.roleBtn, role === 'patient_autonomous' && styles.roleActive]}
+              testID="register-role-autonomous"
+            >
+              <Ionicons
+                name="camera-outline"
+                size={16}
+                color={role === 'patient_autonomous' ? colors.surface : colors.textSecondary}
+              />
+              <Text
+                style={[styles.roleText, role === 'patient_autonomous' && styles.roleTextActive]}
+              >
+                Autônomo
               </Text>
             </Pressable>
             <Pressable
@@ -89,7 +107,7 @@ export default function RegisterScreen() {
             >
               <Ionicons
                 name="medkit-outline"
-                size={18}
+                size={16}
                 color={role === 'doctor' ? colors.surface : colors.textSecondary}
               />
               <Text
@@ -99,6 +117,14 @@ export default function RegisterScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <Text style={styles.roleHint}>
+            {role === 'patient_monitored'
+              ? 'Paciente que utiliza o sistema de aquecimento T.E.R.E.S.A.'
+              : role === 'patient_autonomous'
+                ? 'Paciente que utiliza apenas a análise fotográfica.'
+                : 'Médico(a) responsável por pacientes.'}
+          </Text>
 
           <Field label="Nome completo">
             <TextInput
@@ -216,7 +242,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     padding: 4,
     borderRadius: radii.pill,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     gap: 4,
   },
   roleBtn: {
@@ -226,18 +252,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
   },
   roleActive: {
     backgroundColor: colors.primary,
   },
   roleText: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textSecondary,
     fontWeight: '600',
   },
   roleTextActive: {
     color: colors.surface,
+  },
+  roleHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   field: {
     marginBottom: spacing.md,

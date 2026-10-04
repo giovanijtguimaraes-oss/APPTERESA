@@ -1,0 +1,43 @@
+{
+  "summary": "T.E.R.E.S.A. iteration 4 — full stack regression + new 3-role doctor workflow. Backend: 30/30 pytest cases pass (auth + 3 roles, legacy 'patient' migration, readings with new state_system, sessions, alerts, contacts, calendar, full doctor flow including create-patient/list-linked-only/data-with-latest_reading/send-alert, cross-doctor 403 isolation, AND the real-LLM wound-feedback cycle: patient photo → doctor rates 5★ → patient fetches photo with embedded feedback). Frontend parser unit-check: parseTeresaTelemetry('TEMP=36.8;HUM=52.4;STATE=EM_TRATAMENTO') returns {temperature_c:36.8, humidity_pct:52.4, state:'EM_TRATAMENTO'}; empty/garbage/missing-TEMP/NaN inputs all return null; unknown STATE collapses to 'DESCONHECIDO'. BLE UUID constants match firmware exactly (TERESA_SERVICE_UUID 7b4c0001-…, TELEMETRY 7b4c0002-…, COMMAND 7b4c0003-…, TARGET 'TERESA01'). UI (mobile viewport 390x844): Register screen shows all 3 role toggles; after monitored-register Home shows card-equipment-status / status-dot / status-text / treatment-state / metric-temperature / metric-humidity / wound-analysis / alerts / contacts; after autonomous-register Home shows card-autonomous-info and the equipment+metrics are correctly ABSENT; after doctor-register Home shows doctor-patient-picker with empty patient-picker-list; Profile → btn-add-patient opens modal with add-patient-monitored/autonomous toggles + name/email/password/age/lesion inputs + btn-save-patient; after saving, the created patient appears in picker-item-* list and selecting it renders doctor-patient-header card. Contacts card button label is 'WhatsApp' (1 occurrence on monitored Home). Settings → 'Exportar relatório' tap does not crash. Only benign RN-Web deprecation warnings (shadow*, pointerEvents, useNativeDriver) — no page errors, no red screen.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web styles (multiple)", "issue": "Console warnings: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-fatal, web-only. Likely from third-party deps (react-navigation / expo components). Reference: /app/frontend/app/(app)/(tabs)/home.tsx and shared Card component."},
+      {"component": "Animated API on web", "issue": "'Animated: useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' Web preview only; native build will not warn. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iter4_full.xml"
+  ],
+  "action_items": [
+    "Optional: migrate `shadow*` and `props.pointerEvents` usages to `boxShadow` / `style.pointerEvents` to silence RN-Web deprecation warnings (purely cosmetic — no functional impact).",
+    "Optional: audit `useNativeDriver: true` usages to be gated by Platform.OS !== 'web' to remove the web-only warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py:68 _normalize_role maps legacy 'patient' → 'patient_monitored' for responses, AND startup_migrations runs a one-shot update_many on boot. Verified: joao@teste.com now returns role 'patient_monitored' on login (test_legacy_patient_migrated passes).",
+    "server.py:357 assert_doctor_owns_patient correctly 403s on both non-doctor callers (via require_doctor) AND doctors not linked to the patient (doctor_id check). Verified by TestDoctorAuthorization + test_other_doctor_cannot_* tests.",
+    "server.py:694 save_feedback upserts on (photo_id, doctor_id) — safe for repeated submissions and matches the embedded-feedback contract in /wound-photos/{id}. GET returns feedback via _photo_response which looks it up fresh.",
+    "server.py:869 POST /doctor/patients returns 201 with doctor_id set from the authenticated doctor — matches spec (one-doctor model).",
+    "ble.ts:448 parseTeresaTelemetry is pure and import-safe (no RN deps) — unit-verified above with 6 cases including the exact spec payload. UUIDs match firmware."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (rewritten for 3-role fixtures + doctor flow + feedback cycle)"
+  ],
+  "success_rate": {
+    "backend": "100% (30/30 pytest including real-LLM wound-feedback round-trip)",
+    "frontend": "100% (register 3 roles; monitored/autonomous/doctor Home variants; doctor creates patient and sees it in picker + header; WhatsApp label present; PDF export does not crash)"
+  },
+  "seed_data_creation": "Per-run ephemeral TEST_ accounts (test_pm_*, test_pa_*, test_doc_*, test_doc2_*, test_dp_*) created via /api/auth/register + /api/doctor/patients. Also three UI accounts (ui_pm_<ts>, ui_pa_<ts>, ui_doc_<ts>) and one doctor-created patient (ui_doc_pat_<ts>). All use password 'senha123'. No existing data modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL: EXPO_PUBLIC_BACKEND_URL=https://wound-healing-1.preview.emergentagent.com. The 30-test pytest suite in /app/backend/tests/backend_test.py is the regression source of truth — one case (TestWoundFeedback::test_full_feedback_cycle) hits Emergent LLM Key and takes ~5s; skip with `-k 'not full_feedback_cycle'` to save cost. Legacy joao@teste.com is now role='patient_monitored'. UI testIDs for key new elements: register-role-monitored/autonomous/doctor, card-equipment-status, treatment-state, metric-temperature, metric-humidity, card-autonomous-info, doctor-patient-picker, patient-picker-list, picker-item-<id>, doctor-patient-header, btn-add-patient, add-patient-monitored/autonomous, btn-save-patient, feedback-form (doctor on wound-analysis), feedback-readonly (patient view), star-1..5, btn-save-feedback. BLE still cannot be hardware-tested; parser & UUIDs verified at source level.",
+  "rca_of_issue": "N/A — feature validation only. No bugs found. All review_request criteria pass."
+}

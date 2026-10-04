@@ -307,6 +307,8 @@ function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
     photos: WoundPhoto[];
     sessions: SessionRecord[];
   } | null>(null);
+  const [addPatientOpen, setAddPatientOpen] = useState(false);
+  const [toastDoc, setToastDoc] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
@@ -361,7 +363,20 @@ function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
           </Card>
         )}
 
-        <Card padded title="Pacientes" testID="doctor-patients-card">
+        <Card
+          padded
+          title="Meus pacientes"
+          testID="doctor-patients-card"
+          action={
+            <Pressable
+              onPress={() => setAddPatientOpen(true)}
+              style={styles.smallBtn}
+              testID="btn-add-patient"
+            >
+              <Ionicons name="add" size={18} color={colors.primary} />
+            </Pressable>
+          }
+        >
           <View style={styles.searchBox}>
             <Ionicons name="search" size={18} color={colors.textDisabled} />
             <TextInput
@@ -379,8 +394,8 @@ function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
           ) : patients.length === 0 ? (
             <EmptyState
               icon="people-outline"
-              title={search ? 'Nenhum resultado' : 'Nenhum paciente cadastrado'}
-              description="Pacientes que se cadastrarem aparecerão aqui."
+              title={search ? 'Nenhum resultado' : 'Nenhum paciente vinculado'}
+              description="Toque em + para adicionar seu primeiro paciente."
             />
           ) : (
             patients.map((p) => (
@@ -417,6 +432,12 @@ function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
         {selected && (
           <Card padded title={`Paciente: ${selected.name}`} testID="doctor-selected-card">
             <FieldRow label="E-mail" value={selected.email} />
+            <FieldRow
+              label="Tipo"
+              value={
+                selected.role === 'patient_autonomous' ? 'Autônomo' : 'Monitorado'
+              }
+            />
             <FieldRow label="Idade" value={selected.age ? `${selected.age} anos` : '—'} />
             <FieldRow label="Tipo de lesão" value={selected.lesion_type ?? '—'} />
             <FieldRow label="Local" value={selected.lesion_location ?? '—'} />
@@ -446,6 +467,25 @@ function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
         />
         <View style={{ height: spacing.xl }} />
       </ScrollView>
+
+      <AddPatientModal
+        visible={addPatientOpen}
+        onClose={() => setAddPatientOpen(false)}
+        onCreated={() => {
+          setAddPatientOpen(false);
+          setToastDoc({ msg: 'Paciente criado e vinculado!', type: 'success' });
+          load(search);
+        }}
+      />
+
+      {toastDoc && (
+        <Toast
+          visible
+          message={toastDoc.msg}
+          type={toastDoc.type}
+          onHide={() => setToastDoc(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -456,9 +496,167 @@ async function selectPatient(
   setDetail: (d: { photos: WoundPhoto[]; sessions: SessionRecord[] }) => void,
 ) {
   setSelected(p);
-  // Full patient view — note: backend endpoints for reading other patient's
-  // data would require expanded permissions; for now we show the header.
-  setDetail({ photos: [], sessions: [] });
+  try {
+    const data = await api.get<{ photos: WoundPhoto[]; sessions: SessionRecord[] }>(
+      `/doctor/patient/${p.id}/data`,
+    );
+    setDetail({ photos: data.photos ?? [], sessions: data.sessions ?? [] });
+  } catch {
+    setDetail({ photos: [], sessions: [] });
+  }
+}
+
+// --- Add patient modal (doctor) -----------------------------------------
+function AddPatientModal({
+  visible,
+  onClose,
+  onCreated,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'patient_monitored' | 'patient_autonomous'>(
+    'patient_monitored',
+  );
+  const [age, setAge] = useState('');
+  const [lesionType, setLesionType] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setName('');
+      setEmail('');
+      setPassword('');
+      setRole('patient_monitored');
+      setAge('');
+      setLesionType('');
+      setErr(null);
+    }
+  }, [visible]);
+
+  async function save() {
+    setErr(null);
+    if (!name || !email || password.length < 6) {
+      setErr('Preencha nome, e-mail e senha (≥ 6)');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post<User>('/doctor/patients', {
+        name,
+        email: email.trim(),
+        password,
+        role,
+        age: age ? parseInt(age, 10) : undefined,
+        lesion_type: lesionType || undefined,
+      });
+      onCreated();
+    } catch (e: any) {
+      setErr(e?.detail ?? 'Falha ao criar paciente');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalPanel}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Adicionar paciente</Text>
+            <Pressable onPress={onClose} testID="add-patient-close">
+              <Ionicons name="close" size={22} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScroll}
+            bottomOffset={24}
+          >
+            <View style={styles.roleToggle}>
+              <Pressable
+                onPress={() => setRole('patient_monitored')}
+                style={[styles.roleToggleBtn, role === 'patient_monitored' && styles.roleToggleActive]}
+                testID="add-patient-monitored"
+              >
+                <Text
+                  style={[
+                    styles.roleToggleText,
+                    role === 'patient_monitored' && styles.roleToggleTextActive,
+                  ]}
+                >
+                  Monitorado
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setRole('patient_autonomous')}
+                style={[styles.roleToggleBtn, role === 'patient_autonomous' && styles.roleToggleActive]}
+                testID="add-patient-autonomous"
+              >
+                <Text
+                  style={[
+                    styles.roleToggleText,
+                    role === 'patient_autonomous' && styles.roleToggleTextActive,
+                  ]}
+                >
+                  Autônomo
+                </Text>
+              </Pressable>
+            </View>
+
+            <InputField
+              label="Nome completo"
+              defaultValue=""
+              onChange={setName}
+              testID="add-patient-name"
+            />
+            <InputField
+              label="E-mail de acesso"
+              defaultValue=""
+              onChange={setEmail}
+              keyboardType="default"
+              testID="add-patient-email"
+            />
+            <InputField
+              label="Senha inicial (≥ 6)"
+              defaultValue=""
+              onChange={setPassword}
+              testID="add-patient-password"
+            />
+            <InputField
+              label="Idade (opcional)"
+              defaultValue=""
+              onChange={setAge}
+              keyboardType="numeric"
+              testID="add-patient-age"
+            />
+            <InputField
+              label="Tipo de lesão (opcional)"
+              defaultValue=""
+              onChange={setLesionType}
+              testID="add-patient-lesion"
+            />
+            {err && <Text style={styles.errText}>{err}</Text>}
+          </KeyboardAwareScrollView>
+
+          <View style={styles.modalFooter}>
+            <PrimaryButton
+              label="Criar paciente"
+              onPress={save}
+              loading={saving}
+              testID="btn-save-patient"
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 // ============================== SHARED ==============================
@@ -557,7 +755,7 @@ function EditProfileModal({
             contentContainerStyle={styles.modalScroll}
             bottomOffset={24}
           >
-            {user.role === 'patient' ? (
+            {user.role !== 'doctor' ? (
               <>
                 <InputField
                   label="Idade"
@@ -1033,5 +1231,36 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
     ...typography.bodyLarge,
     color: colors.textPrimary,
+  },
+  roleToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.primarySoft,
+    padding: 4,
+    borderRadius: radii.pill,
+    gap: 4,
+    marginBottom: spacing.md,
+  },
+  roleToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+  },
+  roleToggleActive: {
+    backgroundColor: colors.primary,
+  },
+  roleToggleText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  roleToggleTextActive: {
+    color: colors.surface,
+  },
+  errText: {
+    ...typography.caption,
+    color: colors.redAlert,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
 });

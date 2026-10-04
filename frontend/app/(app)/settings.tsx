@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as Print from 'expo-print';
 import { useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import {
   Pressable,
   ScrollView,
@@ -13,15 +15,55 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
 
 import { Card } from '@/src/components/Card';
+import { Toast } from '@/src/components/Toast';
 import { TopBar } from '@/src/components/TopBar';
 import { useAuth } from '@/src/contexts/AuthContext';
+import {
+  api,
+  type AlertItem,
+  type Reading,
+  type SessionRecord,
+  type WoundPhoto,
+} from '@/src/services/api';
 import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [notif, setNotif] = useState(true);
   const [sync, setSync] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(
+    null,
+  );
+
+  async function exportReport() {
+    if (!user) return;
+    setExporting(true);
+    try {
+      const [photos, sessions, readings, alerts] = await Promise.all([
+        api.get<WoundPhoto[]>('/wound-photos'),
+        api.get<SessionRecord[]>('/sessions'),
+        api.get<Reading[]>('/readings?range=30d'),
+        api.get<AlertItem[]>('/alerts'),
+      ]);
+      const html = buildReportHtml({ user, photos, sessions, readings, alerts });
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (sharingAvailable) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Relatório T.E.R.E.S.A.',
+          UTI: 'com.adobe.pdf',
+        });
+      }
+      setToast({ msg: 'Relatório PDF gerado!', type: 'success' });
+    } catch (e: any) {
+      setToast({ msg: e?.detail ?? 'Falha ao gerar relatório', type: 'error' });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -57,15 +99,15 @@ export default function SettingsScreen() {
         <Card padded title="Dados" testID="settings-data">
           <NavRow
             icon="download-outline"
-            label="Exportar relatório"
+            label={exporting ? 'Gerando PDF…' : 'Exportar relatório'}
             hint="Baixar histórico completo em PDF"
-            onPress={() => {}}
+            onPress={exportReport}
           />
           <NavRow
             icon="save-outline"
             label="Backup"
             hint="Cópia de segurança na nuvem"
-            onPress={() => {}}
+            onPress={() => setToast({ msg: 'Backup já é feito no banco de dados', type: 'info' })}
             last
           />
         </Card>
@@ -117,8 +159,106 @@ export default function SettingsScreen() {
 
         <View style={{ height: spacing.xl }} />
       </ScrollView>
+      {toast && (
+        <Toast visible message={toast.msg} type={toast.type} onHide={() => setToast(null)} />
+      )}
     </SafeAreaView>
   );
+}
+
+// ---------------------------------------------------------------------
+// PDF builder — produces a lightweight A4 clinical report in HTML.
+// ---------------------------------------------------------------------
+function buildReportHtml(args: {
+  user: { name: string; email: string; role: string };
+  photos: WoundPhoto[];
+  sessions: SessionRecord[];
+  readings: Reading[];
+  alerts: AlertItem[];
+}): string {
+  const { user, photos, sessions, readings, alerts } = args;
+  const latestPhoto = photos[0];
+  const avgTemp =
+    readings.length > 0
+      ? (readings.reduce((s, r) => s + r.temperature_c, 0) / readings.length).toFixed(1)
+      : '—';
+  const avgHum =
+    readings.length > 0
+      ? (readings.reduce((s, r) => s + r.humidity_pct, 0) / readings.length).toFixed(0)
+      : '—';
+  const photosHtml = photos
+    .slice(0, 12)
+    .map((p) => {
+      const a = p.analysis;
+      const date = new Date(p.timestamp).toLocaleString('pt-BR');
+      return `
+        <div class="photo">
+          <img src="data:image/jpeg;base64,${p.image_base64}" />
+          <div class="pmeta">
+            <div class="pdate">${date}</div>
+            ${
+              a
+                ? `<div class="pstats">Cicatrização: <b>${a.healing_percentage}%</b> · Área ${a.estimated_area_cm2.toFixed(
+                    1,
+                  )} cm²</div>`
+                : ''
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #0A1930; padding: 24px; }
+          h1 { color: #0D47A1; margin: 0 0 4px; }
+          .sub { color: #64748B; margin-bottom: 20px; }
+          .block { background: #F8FBFF; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+          .block h2 { margin: 0 0 12px; color: #2D6CDF; font-size: 15px; }
+          .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #E2E8F0; }
+          .row:last-child { border-bottom: 0; }
+          .photo { display: inline-block; width: 32%; margin: 1% 0.5%; vertical-align: top; }
+          .photo img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; }
+          .pmeta { font-size: 11px; margin-top: 4px; color: #475569; }
+          .pdate { font-weight: 600; }
+          .footer { margin-top: 24px; font-size: 10px; color: #94A3B8; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório T.E.R.E.S.A.</h1>
+        <div class="sub">
+          ${user.name} · ${user.email} · ${user.role}<br/>
+          Emitido em ${new Date().toLocaleString('pt-BR')}
+        </div>
+
+        <div class="block">
+          <h2>Resumo</h2>
+          <div class="row"><span>Fotos registradas</span><b>${photos.length}</b></div>
+          <div class="row"><span>Sessões realizadas</span><b>${sessions.length}</b></div>
+          <div class="row"><span>Temperatura média (30 d)</span><b>${avgTemp} °C</b></div>
+          <div class="row"><span>Umidade média (30 d)</span><b>${avgHum} %</b></div>
+          <div class="row"><span>Última cicatrização</span><b>${
+            latestPhoto?.analysis?.healing_percentage ?? '—'
+          }%</b></div>
+          <div class="row"><span>Alertas no período</span><b>${alerts.length}</b></div>
+        </div>
+
+        <div class="block">
+          <h2>Fotos recentes</h2>
+          ${photosHtml || '<em>Sem fotos registradas.</em>'}
+        </div>
+
+        <div class="footer">
+          T.E.R.E.S.A. — Tecnologia Especializada em Recuperação e Estímulo à Saúde Avançada<br/>
+          Documento gerado automaticamente. Esta análise não constitui diagnóstico médico.
+        </div>
+      </body>
+    </html>
+  `;
 }
 
 function Row({

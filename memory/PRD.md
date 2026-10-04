@@ -1,56 +1,103 @@
-# T.E.R.E.S.A. — Product Requirements Document
+# T.E.R.E.S.A. — Product Requirements Document (iteration 4)
 
 ## Nome do produto
 **T.E.R.E.S.A.** — Tecnologia Especializada em Recuperação e Estímulo à Saúde Avançada.
 
-App mobile React Native (Expo) para acompanhamento de cicatrização e monitoramento
-ambiental de um equipamento biomédico baseado em ESP32 com fotobiomodulação LED / IR.
-
-## Público
-- Pacientes em tratamento de feridas crônicas.
-- Médicos e enfermeiros acompanhando pacientes.
+App mobile React Native (Expo) para acompanhamento de cicatrização integrado
+ao equipamento biomédico ESP32-C3 **TERESA01**, com perfis para Médico(a),
+paciente **monitorado** (usa o equipamento) e paciente **autônomo** (só análise
+fotográfica da ferida).
 
 ## Stack
-- **Frontend**: Expo SDK 54, expo-router (file-based), TypeScript, React Native SVG, react-native-keyboard-controller, react-native-ble-plx, expo-camera / expo-image-picker.
+- **Frontend**: Expo SDK 54, expo-router, TypeScript, React Native SVG,
+  react-native-keyboard-controller, **react-native-ble-plx**, expo-camera /
+  expo-image-picker, **expo-print + expo-sharing** (PDF), expo-linking (WhatsApp).
 - **Backend**: FastAPI + Motor (async MongoDB) + bcrypt + PyJWT.
-- **IA**: Emergent LLM Key → GPT-5.2 vision (via `emergentintegrations`) para análise de feridas.
-- **Storage**: MongoDB (users, readings, sessions, alerts, contacts, wound_photos).
-- **Auth**: JWT bearer, senhas com bcrypt, token armazenado com `expo-secure-store` (Keychain / EncryptedSharedPreferences).
+- **IA**: Emergent LLM Key → GPT-5.2 vision (via `emergentintegrations`) para
+  análise de feridas; não é diagnóstico.
+- **Hardware**: ESP32-C3 anunciando `TERESA01`, firmware Arduino não é alterado.
 
-## Identidade visual
-Palette: `#FFFFFF · #E6F0FF · #9CC6FF · #2D6CDF · #0D47A1` (inspirada nas vestes de Madre Teresa).
-Muito espaço em branco, cantos arredondados, cards suaves, tipografia iOS/System.
+## Perfis & RBAC
+| Role                   | Capacidades principais                                                           |
+|------------------------|----------------------------------------------------------------------------------|
+| `doctor`               | Cria/vincula pacientes, lista próprios pacientes, envia avisos, dá feedback★.    |
+| `patient_monitored`    | Conecta ao TERESA01 (BLE), vê temp/umidade/estado reais, câmera, histórico, alertas, calendário. |
+| `patient_autonomous`   | Só análise fotográfica da ferida, calendário, alertas, perfil. Sem BLE/temp/humidade. |
 
-## Fluxo do usuário
-1. **Login / Registro** (paciente ou médico) — JWT.
-2. **Home** — cards de temperatura/umidade, gráfico linear (24h/7d/30d), botão circular câmera + IA para análise da ferida, gauge circular de cicatrização, alertas rápidos, contatos rápidos.
-3. **Calendário** — grid mensal com dots coloridos (azul=sessão, verde=boa evolução, amarelo=observação, vermelho=alerta) + resumo do dia selecionado.
-4. **Avisos** — lista de alertas (info/warning/critical/success) com badge não-lidos.
-5. **Perfil** — modos Paciente (dados clínicos, healing, fotos, contatos) e Médico (busca + lista de pacientes + dados). Editável via bottom sheet.
-6. **Drawer** (☰): Configurações, Conectar equipamento (passo a passo BLE), Sobre, Ajuda, Política de privacidade.
-7. **Análise da ferida** — tela completa com foto, gauge circular, métricas clínicas, observações da IA e disclaimer.
+Migração automática na startup: `role="patient"` → `role="patient_monitored"`.
 
-## API (FastAPI, prefixo /api)
-- `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `PATCH /auth/me`
-- `POST/GET /readings`, `GET /readings/latest`
-- `POST/GET /sessions`
-- `POST/GET /alerts`, `GET /alerts/unread-count`, `POST /alerts/{id}/read`, `POST /alerts/read-all`
-- `POST/GET/DELETE /contacts`
-- `POST /wound-photos/analyze`, `GET /wound-photos`, `GET /wound-photos/latest`
+## Protocolo BLE (adaptado ao firmware)
+Todas as constantes vivem em `frontend/src/services/ble.ts`:
+
+```ts
+TARGET_DEVICE_NAME     = 'TERESA01'
+TERESA_SERVICE_UUID    = '7b4c0001-7f9d-4a2e-9d7c-6f3e2a1b0001'
+TERESA_TELEMETRY_CHAR  = '7b4c0002-7f9d-4a2e-9d7c-6f3e2a1b0001'   // NOTIFY+READ
+TERESA_COMMAND_CHAR    = '7b4c0003-7f9d-4a2e-9d7c-6f3e2a1b0001'   // WRITE (não enviado nesta fase)
+```
+
+Payload de telemetria exato (1 Hz enquanto conectado):
+```
+TEMP=36.8;HUM=52.4;STATE=EM_TRATAMENTO
+```
+
+Estados reconhecidos (iguais ao firmware):
+`AGUARDANDO_BRACELETE | AGUARDANDO_INICIO | AQUECENDO | EM_TRATAMENTO | TRATAMENTO_INTERROMPIDO | TRATAMENTO_FINALIZADO`
+
+Conexão só vira "CONECTADO" após o primeiro frame válido; timeout de 10 s
+sem telemetria → desconectado e tentativa de reconexão (até 5 × 3 s).
+
+## API Backend (prefixo `/api`)
+
+### Auth
+- `POST /auth/register` (role em `doctor | patient_monitored | patient_autonomous`)
+- `POST /auth/login`, `GET /auth/me`, `PATCH /auth/me`
+
+### Sensor / Sessions / Alerts / Contacts
+- `POST /readings` (aceita `state_system`), `GET /readings?range=24h|7d|30d`, `GET /readings/latest`
+- `POST /sessions`, `GET /sessions`
+- `POST /alerts`, `GET /alerts`, `GET /alerts/unread-count`, `POST /alerts/{id}/read`, `POST /alerts/read-all`
+- `POST /contacts`, `GET /contacts`, `DELETE /contacts/{id}`
+
+### Wound photos + AI + Feedback
+- `POST /wound-photos/analyze` (GPT-5.2 vision)
+- `GET /wound-photos`, `GET /wound-photos/latest`, `GET /wound-photos/{id}` (RBAC: dono ou médico vinculado)
+- `POST /wound-photos/{id}/feedback` (★1-5 + comment, doctor-only + vinculado) — cria alerta automático para o paciente
+
+### Calendar
 - `GET /calendar/day/{YYYY-MM-DD}`, `GET /calendar/month/{y}/{m}`
-- `GET /doctor/patients`, `GET /doctor/patient/{id}`
 
-## BLE (ESP32)
-- Serviço UUID: `6e400001-b5a3-f393-e0a9-e50e24dcca9e` (Nordic UART-like).
-- Telemetria: `6e400003-...` (JSON com temperature, humidity, time_remaining, LED/IR intensity, battery, status).
-- Comandos: `6e400002-...` (start / pause / stop / set intensities / sync time / request report).
-- Camada desacoplada em `/src/services/ble.ts` — lazy-load do `BleManager`. Não crasha em Expo Go/web; requer build nativo para funcionar de fato (informado ao usuário na UI).
+### Doctor
+- `GET /doctor/patients?linked_only=true&q=…`
+- `POST /doctor/patients` (cria paciente **já vinculado**)
+- `POST /doctor/patients/{id}/link` (vincula paciente existente)
+- `GET /doctor/patient/{id}` / `GET /doctor/patient/{id}/data`
+- `POST /doctor/patient/{id}/alert` (envia aviso ao paciente)
+
+## Fluxos de UI
+- **Login / Registro** — 3 roles (Monitorado / Autônomo / Médico(a)).
+- **Home (role-dispatched)**:
+  - *Monitorado*: status do sistema de aquecimento, StateBadge (6 estados), temp/umidade (BLE live quando conectado), câmera IA, alertas, contatos (WhatsApp).
+  - *Autônomo*: info card, câmera IA, alertas, contatos — SEM temp/umidade/BLE.
+  - *Médico*: dropdown "Selecionar paciente" → cards do paciente (header, metrics se monitorado, última análise, estatísticas, botão "Enviar aviso").
+- **Perfil**:
+  - *Paciente*: dados clínicos, healing gauge, histórico, contatos.
+  - *Médico*: cabeçalho + "Meus pacientes" com busca e botão **+** → modal "Adicionar paciente" (Monitorado/Autônomo + nome + e-mail + senha + idade + lesão).
+- **Análise da ferida**:
+  - Pacientes/médicos: foto + gauge + métricas + observações IA.
+  - *Médico*: formulário de feedback ★1-5 + comentário (`POST /wound-photos/{id}/feedback`).
+  - *Paciente*: vê feedback (★ e comentário) quando existir.
+- **Enviar aviso** (`/app/send-alert?patientId=…`): seletor de nível + título + descrição.
+- **Settings**: Exportar relatório → PDF via **expo-print** (resumo + fotos recentes + stats) com Sharing.
+- **Drawer ☰**: Configurações, Conectar equipamento (passo a passo BLE), Sobre, Ajuda, Política de privacidade.
 
 ## Segurança
-- Senhas bcrypt, JWT com expiração de 30 dias.
-- Token no Keychain iOS / EncryptedSharedPreferences Android via `expo-secure-store`.
-- Todas as rotas (exceto register/login) protegidas por dependência `get_current_user`.
-- CORS aberto (dev) — restringir em produção.
+- Senhas bcrypt, JWT 30 dias, token em Keychain/EncryptedSharedPreferences.
+- Médico só vê pacientes vinculados (via `doctor_id`); endpoints `/doctor/*` são 403 para não-médicos.
+- Fotos de ferida: acesso só pelo paciente dono ou médico vinculado.
 
-## Status
-✅ MVP funcional end-to-end (menos BLE real que requer build nativo).
+## Status (iteration 4)
+- 30/30 testes de backend passam.
+- Parser `parseTeresaTelemetry` cobre casos válidos / vazios / inválidos / estado desconhecido.
+- Fluxos de frontend validados visualmente para os 3 roles.
+- BLE real precisa de **Development Build / Production Build** nativo (Publish do Emergent).

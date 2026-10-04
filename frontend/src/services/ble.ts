@@ -1,44 +1,86 @@
 /**
- * BLE Service — Communication layer for the T.E.R.E.S.A. ESP32 Mini.
+ * BLE Service — Communication layer for the T.E.R.E.S.A. ESP32-C3 Mini.
  *
- * Requirements (per project spec):
- *  - Only discover the ESP32 advertised as "TERESA01".
- *  - Connection is only "ativa" after receiving valid telemetry (temperature +
- *    humidity) from the device — Bluetooth on with no ESP32 does NOT count.
- *  - Detect disconnection (BLE-level and telemetry timeout) and auto-reconnect
- *    a bounded number of times.
- *  - Modular: no BLE code outside this file, no UUIDs elsewhere.
+ * The ESP32-C3 firmware is finalized and MUST NOT change. This module adapts
+ * the app to the firmware's exact protocol:
  *
- * Notes:
- *  - `react-native-ble-plx` is loaded lazily so the app does not crash in
- *    Expo Go / web / Node during Metro bundling. When the module is not
- *    available (Expo Go), `isAvailable()` returns false and every method
- *    is a no-op — screens surface this to the user.
- *  - A native development / production build is required for real BLE to
- *    work. Instructions live in /app/ESP32_FIRMWARE.md.
+ *   Device name  : TERESA01
+ *   Service UUID : 7b4c0001-7f9d-4a2e-9d7c-6f3e2a1b0001
+ *   Telemetry    : 7b4c0002-7f9d-4a2e-9d7c-6f3e2a1b0001  (NOTIFY + READ)
+ *   Command      : 7b4c0003-7f9d-4a2e-9d7c-6f3e2a1b0001  (WRITE, no commands sent yet)
+ *
+ *   Telemetry payload (sent every ~1 s while a client is connected):
+ *       TEMP=36.8;HUM=52.4;STATE=EM_TRATAMENTO
+ *
+ *   STATE is one of:
+ *       AGUARDANDO_BRACELETE | AGUARDANDO_INICIO | AQUECENDO |
+ *       EM_TRATAMENTO | TRATAMENTO_INTERROMPIDO | TRATAMENTO_FINALIZADO
+ *
+ * The connection is only considered "ativa" after the first valid telemetry
+ * frame is received. BLE link alone does NOT count as connected.
+ *
+ * `react-native-ble-plx` is loaded lazily; the module is a safe no-op on
+ * Expo Go / web (where native BLE is unavailable).
  */
 
 import { Platform } from 'react-native';
 
 // ============================================================================
-// FIRMWARE CONFIG — align these UUIDs with the ESP32 Arduino sketch.
-// Placeholders below use the well-known Nordic-UART UUIDs. If the T.E.R.E.S.A.
-// firmware defines different UUIDs, change ONLY these constants. Do NOT sprinkle
-// UUIDs anywhere else in the codebase.
+// Firmware constants — MATCH THE ARDUINO SKETCH. Do NOT change.
 // ============================================================================
 export const TARGET_DEVICE_NAME = 'TERESA01';
-export const TERESA_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-export const TERESA_TELEMETRY_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // notify
-export const TERESA_COMMAND_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // write
+export const TERESA_SERVICE_UUID = '7b4c0001-7f9d-4a2e-9d7c-6f3e2a1b0001';
+export const TERESA_TELEMETRY_CHAR = '7b4c0002-7f9d-4a2e-9d7c-6f3e2a1b0001';
+export const TERESA_COMMAND_CHAR = '7b4c0003-7f9d-4a2e-9d7c-6f3e2a1b0001';
+
+// ============================================================================
+// Treatment state (mirrors the ESP32 state machine 1:1)
+// ============================================================================
+export type TreatmentState =
+  | 'AGUARDANDO_BRACELETE'
+  | 'AGUARDANDO_INICIO'
+  | 'AQUECENDO'
+  | 'EM_TRATAMENTO'
+  | 'TRATAMENTO_INTERROMPIDO'
+  | 'TRATAMENTO_FINALIZADO'
+  | 'DESCONHECIDO';
+
+export const KNOWN_STATES: readonly TreatmentState[] = [
+  'AGUARDANDO_BRACELETE',
+  'AGUARDANDO_INICIO',
+  'AQUECENDO',
+  'EM_TRATAMENTO',
+  'TRATAMENTO_INTERROMPIDO',
+  'TRATAMENTO_FINALIZADO',
+] as const;
+
+export function labelForState(s: TreatmentState): string {
+  switch (s) {
+    case 'AGUARDANDO_BRACELETE':
+      return 'Aguardando bracelete';
+    case 'AGUARDANDO_INICIO':
+      return 'Aguardando início';
+    case 'AQUECENDO':
+      return 'Aquecendo';
+    case 'EM_TRATAMENTO':
+      return 'Em tratamento';
+    case 'TRATAMENTO_INTERROMPIDO':
+      return 'Tratamento interrompido';
+    case 'TRATAMENTO_FINALIZADO':
+      return 'Tratamento finalizado';
+    default:
+      return 'Estado desconhecido';
+  }
+}
 
 // ============================================================================
 // Public types
 // ============================================================================
 
 /**
- * `connected` means BLE is linked AND we're actually receiving valid telemetry.
- * `connecting` covers both the initial handshake and the window between a
- * successful BLE link and the first telemetry frame.
+ * `connected` means BLE is linked AND we're actually receiving valid
+ * telemetry. `connecting` covers the initial handshake and the window
+ * between a successful BLE link and the first telemetry frame.
  */
 export type ConnectionState =
   | 'disconnected'
@@ -56,34 +98,23 @@ export interface BleDevice {
 export interface TeresaTelemetry {
   temperature_c: number;
   humidity_pct: number;
-  /** ESP32-reported status. Normalized to upper case. "ON" / "OFF" / etc. */
-  status: string;
-  time_remaining_s?: number;
-  led_intensity?: number;
-  ir_intensity?: number;
-  battery_pct?: number;
-  session_status?: string;
-  last_error?: string | null;
+  state: TreatmentState;
   /** ISO timestamp when the app received the frame. */
   received_at: string;
 }
 
+/** Command payloads (not sent in this phase — reserved for future). */
 export type Command =
   | { type: 'start_session' }
   | { type: 'pause_session' }
-  | { type: 'stop_session' }
-  | { type: 'set_led_intensity'; value: number }
-  | { type: 'set_ir_intensity'; value: number }
-  | { type: 'set_protocol'; id: string }
-  | { type: 'sync_time'; iso: string }
-  | { type: 'request_report' };
+  | { type: 'stop_session' };
 
 type Listener<T> = (v: T) => void;
 
 // ============================================================================
 // Tunables
 // ============================================================================
-const TELEMETRY_TIMEOUT_MS = 30_000; // no data in 30s ⇒ mark disconnected
+const TELEMETRY_TIMEOUT_MS = 10_000; // ESP32 sends every ~1s; 10s silence ⇒ dead
 const RECONNECT_DELAY_MS = 3_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const SCAN_TIMEOUT_MS = 10_000;
@@ -113,8 +144,6 @@ class BleService {
   private disconnectSubscription: any | null = null;
 
   // --------------------------------------------------------------------------
-  // Availability / lazy manager loading
-  // --------------------------------------------------------------------------
   private tryLoadManager(): boolean {
     if (this.manager) return true;
     try {
@@ -133,8 +162,6 @@ class BleService {
     return this.tryLoadManager();
   }
 
-  // --------------------------------------------------------------------------
-  // Public getters / subscriptions
   // --------------------------------------------------------------------------
   getState(): ConnectionState {
     return this.state;
@@ -180,7 +207,7 @@ class BleService {
   }
 
   // --------------------------------------------------------------------------
-  // Scanning — only surface devices whose advertised name matches TERESA01
+  // Scan — only surface devices whose advertised name is TERESA01
   // --------------------------------------------------------------------------
   async startScan(): Promise<void> {
     if (!this.isAvailable()) {
@@ -203,9 +230,8 @@ class BleService {
         if (!device) return;
         const name = (device.name || device.localName || '').toString();
         if (!name) return;
-        // Match TERESA01 (case-insensitive, allow optional suffix like _01).
-        const upper = name.toUpperCase();
-        if (!upper.startsWith(TARGET_DEVICE_NAME)) return;
+        // ESP32-C3 firmware advertises exactly "TERESA01".
+        if (name.toUpperCase() !== TARGET_DEVICE_NAME) return;
         this.discoveredDevices.set(device.id, {
           id: device.id,
           name,
@@ -236,8 +262,6 @@ class BleService {
   }
 
   // --------------------------------------------------------------------------
-  // Connect / disconnect
-  // --------------------------------------------------------------------------
   async connect(deviceId: string): Promise<void> {
     if (!this.isAvailable()) return;
     this.stopScan();
@@ -251,15 +275,12 @@ class BleService {
     try {
       await this.cleanupConnection();
       const device = await this.manager.connectToDevice(deviceId, {
-        // Larger MTU keeps telemetry frames in one chunk.
         requestMTU: 185,
       });
       await device.discoverAllServicesAndCharacteristics();
       this.connectedDevice = device;
       this.lastConnectedDeviceId = deviceId;
 
-      // Register the disconnect listener BEFORE subscribing telemetry so we
-      // catch cable/power loss between the two steps.
       this.disconnectSubscription = this.manager.onDeviceDisconnected(
         deviceId,
         (error: any) => {
@@ -269,8 +290,7 @@ class BleService {
       );
 
       this.subscribeTelemetry();
-      // Stay in `connecting` state until the first valid telemetry arrives —
-      // real connection is only "ativa" enquanto recebemos dados válidos.
+      // Stay in `connecting` until the first valid frame arrives.
     } catch (e) {
       console.warn('BLE connect error', e);
       this.setState('error');
@@ -279,12 +299,11 @@ class BleService {
   }
 
   async disconnect(): Promise<void> {
-    // User-initiated: stop trying to reconnect.
     if (this.reconnectTimeoutId) {
       clearTimeout(this.reconnectTimeoutId);
       this.reconnectTimeoutId = null;
     }
-    this.reconnectAttempts = MAX_RECONNECT_ATTEMPTS; // block auto-retry
+    this.reconnectAttempts = MAX_RECONNECT_ATTEMPTS;
     this.lastConnectedDeviceId = null;
 
     await this.cleanupConnection();
@@ -297,7 +316,7 @@ class BleService {
       try {
         this.telemetrySubscription.remove();
       } catch {
-        // noop
+        /* noop */
       }
       this.telemetrySubscription = null;
     }
@@ -305,7 +324,7 @@ class BleService {
       try {
         this.disconnectSubscription.remove();
       } catch {
-        // noop
+        /* noop */
       }
       this.disconnectSubscription = null;
     }
@@ -317,14 +336,14 @@ class BleService {
       try {
         await this.connectedDevice.cancelConnection();
       } catch {
-        // noop — device may already be gone.
+        /* noop */
       }
       this.connectedDevice = null;
     }
   }
 
   // --------------------------------------------------------------------------
-  // Telemetry pipeline
+  // Telemetry subscription + parser
   // --------------------------------------------------------------------------
   private subscribeTelemetry(): void {
     if (!this.connectedDevice) return;
@@ -340,10 +359,9 @@ class BleService {
           if (!char?.value) return;
           try {
             const raw = decodeBase64(char.value);
-            const parsed = parseTelemetryPayload(raw);
+            const parsed = parseTeresaTelemetry(raw);
             if (!parsed) return;
             this.lastTelemetry = parsed;
-            // Only NOW consider the connection truly active.
             this.setState('connected');
             this.telemetryListeners.forEach((fn) => fn(parsed));
             this.armTelemetryTimeout();
@@ -366,8 +384,6 @@ class BleService {
   }
 
   // --------------------------------------------------------------------------
-  // Disconnection & reconnection
-  // --------------------------------------------------------------------------
   private handleDisconnect(): void {
     if (this.telemetryTimeoutId) {
       clearTimeout(this.telemetryTimeoutId);
@@ -377,7 +393,7 @@ class BleService {
       try {
         this.telemetrySubscription.remove();
       } catch {
-        // noop
+        /* noop */
       }
       this.telemetrySubscription = null;
     }
@@ -401,26 +417,22 @@ class BleService {
   }
 
   // --------------------------------------------------------------------------
-  // Commands (write to command characteristic)
+  // Command write — present but intentionally UNUSED in this phase.
+  // Firmware's command characteristic exists for future use (start_session,
+  // pause_session, etc.) and NO command is sent to the ESP32 right now.
   // --------------------------------------------------------------------------
-  async sendCommand(cmd: Command): Promise<void> {
-    if (!this.connectedDevice) return;
-    try {
-      const raw = JSON.stringify(cmd);
-      const b64 = encodeBase64(raw);
-      await this.connectedDevice.writeCharacteristicWithResponseForService(
-        TERESA_SERVICE_UUID,
-        TERESA_COMMAND_CHAR,
-        b64,
-      );
-    } catch (e) {
-      console.warn('BLE send command error', e);
+  async sendCommand(_cmd: Command): Promise<void> {
+    // Reserved for future use. The firmware supports WRITE on the command
+    // characteristic but does not act on any payload yet, so we keep the
+    // channel closed intentionally.
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('bleService.sendCommand is a no-op in this phase.');
     }
   }
 }
 
 // ============================================================================
-// Base64 helpers (support RN and web fallbacks)
+// Base64 helpers
 // ============================================================================
 function decodeBase64(b64: string): string {
   if (typeof globalThis.atob === 'function') return globalThis.atob(b64);
@@ -429,60 +441,42 @@ function decodeBase64(b64: string): string {
   return Buffer.from(b64, 'base64').toString('utf-8');
 }
 
-function encodeBase64(raw: string): string {
-  if (typeof globalThis.btoa === 'function') return globalThis.btoa(raw);
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Buffer } = require('buffer');
-  return Buffer.from(raw, 'utf-8').toString('base64');
-}
+// ============================================================================
+// Protocol parser — EXACT match for the firmware output:
+//   "TEMP=36.8;HUM=52.4;STATE=EM_TRATAMENTO"
+// ============================================================================
+export function parseTeresaTelemetry(raw: string): TeresaTelemetry | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const map = new Map<string, string>();
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const key = part.slice(0, eq).trim().toUpperCase();
+    const value = part.slice(eq + 1).trim();
+    if (key) map.set(key, value);
+  }
 
-// ============================================================================
-// Telemetry payload parser (JSON with flexible casing)
-// ============================================================================
-function parseTelemetryPayload(raw: string): TeresaTelemetry | null {
-  let obj: any;
-  try {
-    obj = JSON.parse(raw);
-  } catch {
+  const tempStr = map.get('TEMP');
+  const humStr = map.get('HUM');
+  const stateStr = (map.get('STATE') ?? '').toUpperCase();
+
+  if (!tempStr || !humStr) return null;
+  const temperature_c = parseFloat(tempStr);
+  const humidity_pct = parseFloat(humStr);
+  if (!Number.isFinite(temperature_c) || !Number.isFinite(humidity_pct)) {
     return null;
   }
-  if (!obj || typeof obj !== 'object') return null;
 
-  const temp =
-    obj.temperature_c ??
-    obj.temperature ??
-    obj.TEMPERATURE ??
-    obj.temp ??
-    null;
-  const hum =
-    obj.humidity_pct ??
-    obj.humidity ??
-    obj.HUMIDITY ??
-    obj.hum ??
-    null;
-  const rawStatus = obj.status ?? obj.STATUS ?? obj.session_status ?? 'ON';
-
-  const tNum = typeof temp === 'number' ? temp : parseFloat(temp);
-  const hNum = typeof hum === 'number' ? hum : parseFloat(hum);
-  if (!Number.isFinite(tNum) || !Number.isFinite(hNum)) return null;
+  const state: TreatmentState = (KNOWN_STATES as readonly string[]).includes(stateStr)
+    ? (stateStr as TreatmentState)
+    : 'DESCONHECIDO';
 
   return {
-    temperature_c: tNum,
-    humidity_pct: hNum,
-    status: String(rawStatus).toUpperCase(),
-    time_remaining_s: numOrUndef(obj.time_remaining_s ?? obj.time_remaining),
-    led_intensity: numOrUndef(obj.led_intensity),
-    ir_intensity: numOrUndef(obj.ir_intensity),
-    battery_pct: numOrUndef(obj.battery_pct ?? obj.battery),
-    session_status: obj.session_status,
-    last_error: obj.last_error ?? null,
+    temperature_c,
+    humidity_pct,
+    state,
     received_at: new Date().toISOString(),
   };
-}
-
-function numOrUndef(v: any): number | undefined {
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : undefined;
 }
 
 // ============================================================================

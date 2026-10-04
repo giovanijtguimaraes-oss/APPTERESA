@@ -12,7 +12,7 @@ interface AuthContextValue {
     email: string;
     password: string;
     name: string;
-    role: 'patient' | 'doctor';
+    role: 'patient_monitored' | 'patient_autonomous' | 'doctor';
   }) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string;
     password: string;
     name: string;
-    role: 'patient' | 'doctor';
+    role: 'patient_monitored' | 'patient_autonomous' | 'doctor';
   }) {
     const res = await api.post<{ token: string; user: User }>(
       '/auth/register',
