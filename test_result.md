@@ -101,3 +101,75 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: >
+  Validação final da conexão BLE real com o TERESA01 (ESP32-C3): o app deve
+  encontrar o dispositivo, conectar aos UUIDs corretos, receber notificações
+  TEMP/HUM/STATE, exibir valores reais na Home do paciente monitorado,
+  detectar desconexão e reconectar automaticamente, SEM usar dados simulados
+  quando o TERESA01 estiver conectado. Firmware, UUIDs e protocolo não devem
+  mudar.
+
+frontend:
+  - task: "BLE: new ConnectionState variants (reconnecting, bt_off, unauthorized)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/services/ble.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added reconnecting / bt_off / unauthorized states, Android runtime permissions, BT state subscription, raw frame diagnostic log, reconnect-attempt counter exposed via onMeta, and MAX_RECONNECT_ATTEMPTS raised to 10. Pure additive change — scan + connect + parse flow unchanged; firmware constants (name, UUIDs, payload) untouched."
+  - task: "Connect screen enhancements (diagnostic panel, live telemetry, state hints)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(app)/connect.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Replaced single CONECTADO/DESCONECTADO row with per-state rendering (connected/connecting/scanning/reconnecting with attempt counter/bt_off/unauthorized/error). Added 'última leitura há Xs · N frames' sub-label when connected. Added Live Telemetry card (temperature/humidity/state) during connection. Added Diagnóstico BLE card with scrollable RX/INFO/WARN/ERROR entries and Limpar action. Added 'Abrir configurações' CTAs for bt_off and unauthorized states. Visible verification needed via screenshot — logic verified on web preview (shows the new empty Diagnóstico BLE panel + updated status card)."
+  - task: "Monitored Home status card: live age + reconnect indicator"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(app)/(tabs)/home.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Equipment-status card now shows CONECTANDO…, RECONECTANDO X/Y, BLUETOOTH DESLIGADO, PERMISSÃO NEGADA besides CONECTADO/DESCONECTADO. When connected, adds a 'Última leitura há Xs · N frames' sub-label driven by a 1s ticker + onMeta. No change to displayTemp/displayHum/treatmentState logic (telemetry still wins when connected)."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 6
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "BLE: new ConnectionState variants (reconnecting, bt_off, unauthorized)"
+    - "Connect screen enhancements (diagnostic panel, live telemetry, state hints)"
+    - "Monitored Home status card: live age + reconnect indicator"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: >
+      Only web/preview regression check is needed here; real BLE verification is
+      a physical bench test that must happen on a native APK/IPA (see
+      /app/BLE_BENCH_TEST.md). On the web preview please verify (a) login flows
+      for doctor and patient_monitored still work and don't regress; (b) the
+      Connect screen renders the new "Diagnóstico BLE" and the updated status
+      card (gray dot + "Desconectado" + "Buscar dispositivos" + the "BLE
+      funciona apenas em builds nativos" info box); (c) the Monitored Home
+      card shows "DESCONECTADO" + 'Equipamento desconectado' badge (since BLE
+      is unavailable on web). Backend endpoints did NOT change in this session,
+      so any auth regression indicates a frontend-only side effect.

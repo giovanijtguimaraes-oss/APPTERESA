@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "teresa",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.woundhealing.s4m7rd",
@@ -16,7 +15,9 @@
         "NSPhotoLibraryUsageDescription": "Selecionar fotos da ferida para análise",
         "NSBluetoothAlwaysUsageDescription": "Conectar ao equipamento T.E.R.E.S.A.",
         "NSBluetoothPeripheralUsageDescription": "Conectar ao equipamento T.E.R.E.S.A.",
-        "UIBackgroundModes": ["bluetooth-central"]
+        "UIBackgroundModes": [
+          "bluetooth-central"
+        ]
       }
     },
     "android": {
@@ -24,7 +25,6 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.emergent.woundhealing.s4m7rd",
       "permissions": [
         "android.permission.CAMERA",
@@ -69,10 +69,19 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": true,
-          "modes": ["central"],
+          "modes": [
+            "central"
+          ],
           "bluetoothAlwaysPermission": "Conectar ao equipamento T.E.R.E.S.A."
         }
-      ]
+      ],
+      "expo-build-properties",
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

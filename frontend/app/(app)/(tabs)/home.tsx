@@ -33,6 +33,7 @@ import {
 } from '@/src/services/api';
 import {
   bleService,
+  type ConnectionMeta,
   type ConnectionState,
   type TeresaTelemetry,
   type TreatmentState,
@@ -218,6 +219,7 @@ async function pickAndAnalyze(
 function MonitoredPatientHome({ user }: { user: User }) {
   const router = useRouter();
   const [bleState, setBleState] = useState<ConnectionState>(bleService.getState());
+  const [bleMeta, setBleMeta] = useState<ConnectionMeta>(bleService.getMeta());
   const [telemetry, setTelemetry] = useState<TeresaTelemetry | null>(bleService.getLastTelemetry());
   const [latest, setLatest] = useState<Reading | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -225,9 +227,16 @@ function MonitoredPatientHome({ user }: { user: User }) {
   const [latestPhoto, setLatestPhoto] = useState<WoundPhoto | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [now, setNow] = useState<number>(Date.now());
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' | 'info' } | null>(
     null,
   );
+
+  // Lightweight 1 s ticker to refresh "última leitura há Xs"
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -255,6 +264,7 @@ function MonitoredPatientHome({ user }: { user: User }) {
   const lastPersistRef = useRef(0);
   useEffect(() => {
     const off1 = bleService.onStateChange(setBleState);
+    const offMeta = bleService.onMeta(setBleMeta);
     const off2 = bleService.onTelemetry((t: TeresaTelemetry) => {
       setTelemetry(t);
       // Also feed the "latest reading" card so historic UI stays consistent.
@@ -284,6 +294,7 @@ function MonitoredPatientHome({ user }: { user: User }) {
     });
     return () => {
       off1();
+      offMeta();
       off2();
     };
   }, [user.id]);
@@ -295,12 +306,39 @@ function MonitoredPatientHome({ user }: { user: User }) {
   }
 
   const connected = bleState === 'connected';
+  const reconnecting = bleState === 'reconnecting';
+  const connecting = bleState === 'connecting';
+  const btOff = bleState === 'bt_off';
+  const unauthorized = bleState === 'unauthorized';
   const healingPct = latestPhoto?.analysis?.healing_percentage ?? 0;
   // When BLE is connected, telemetry (live sensors) wins over the backend snapshot.
   const displayTemp = connected && telemetry ? telemetry.temperature_c : latest?.temperature_c;
   const displayHum = connected && telemetry ? telemetry.humidity_pct : latest?.humidity_pct;
   const treatmentState: TreatmentState | null =
     connected && telemetry ? telemetry.state : null;
+
+  const statusMeta = (() => {
+    if (connected)
+      return { color: colors.greenGood, label: 'CONECTADO', dot: colors.greenGood };
+    if (connecting)
+      return { color: colors.yellowObserve, label: 'CONECTANDO…', dot: colors.yellowObserve };
+    if (reconnecting)
+      return {
+        color: colors.yellowObserve,
+        label: `RECONECTANDO ${bleMeta.reconnectAttempt}/${bleMeta.maxReconnectAttempts}`,
+        dot: colors.yellowObserve,
+      };
+    if (btOff)
+      return { color: colors.redAlert, label: 'BLUETOOTH DESLIGADO', dot: colors.redAlert };
+    if (unauthorized)
+      return { color: colors.redAlert, label: 'PERMISSÃO NEGADA', dot: colors.redAlert };
+    return { color: colors.textSecondary, label: 'DESCONECTADO', dot: colors.textDisabled };
+  })();
+
+  const lastFrameAgeMs = bleMeta.lastFrameAt
+    ? Math.max(0, now - new Date(bleMeta.lastFrameAt).getTime())
+    : null;
+  const lastFrameAgeLabel = lastFrameAgeMs != null ? formatAgeShort(lastFrameAgeMs) : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -320,23 +358,27 @@ function MonitoredPatientHome({ user }: { user: User }) {
           <View style={styles.statusRow}>
             <View style={styles.statusLeft}>
               <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: connected ? colors.greenGood : colors.textDisabled },
-                ]}
+                style={[styles.statusDot, { backgroundColor: statusMeta.dot }]}
                 testID="status-dot"
               />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.statusTitle}>Sistema de aquecimento</Text>
                 <Text
-                  style={[
-                    styles.statusSub,
-                    { color: connected ? colors.greenGood : colors.textSecondary },
-                  ]}
+                  style={[styles.statusSub, { color: statusMeta.color }]}
                   testID="status-text"
                 >
-                  {connected ? 'CONECTADO' : 'DESCONECTADO'}
+                  {statusMeta.label}
                 </Text>
+                {connected && lastFrameAgeLabel && (
+                  <Text style={styles.statusHint} testID="status-last-rx">
+                    Última leitura {lastFrameAgeLabel} · {bleMeta.framesReceived} frames
+                  </Text>
+                )}
+                {reconnecting && (
+                  <Text style={styles.statusHint}>
+                    Mantenha o equipamento ligado e próximo.
+                  </Text>
+                )}
               </View>
             </View>
             <Pressable
@@ -912,6 +954,15 @@ function doctorGreeting(name?: string): string {
   return `Olá, Dr(a). ${first} 👋`;
 }
 
+function formatAgeShort(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `há ${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `há ${m}min`;
+  const h = Math.floor(m / 60);
+  return `há ${h}h`;
+}
+
 // ============================================================================
 // Styles
 // ============================================================================
@@ -936,6 +987,7 @@ const styles = StyleSheet.create({
   statusDot: { width: 12, height: 12, borderRadius: 6 },
   statusTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   statusSub: { ...typography.caption, fontWeight: '700', marginTop: 2 },
+  statusHint: { ...typography.caption, color: colors.textSecondary, marginTop: 2, fontWeight: '500' },
   statusAction: {
     flexDirection: 'row',
     alignItems: 'center',

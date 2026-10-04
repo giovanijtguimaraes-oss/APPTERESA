@@ -1,0 +1,42 @@
+{
+  "summary": "T.E.R.E.S.A. iteration 5 — SDK 54 → SDK 57 upgrade regression. Backend: 29/29 pytest cases pass against the live preview URL (full_feedback_cycle skipped per E1 note; the other TestWoundFeedback guard tests still run). No backend code changed and no new backend regressions. Frontend bundles cleanly on SDK 57 (expo@57 in supervisor logs, 'Web Bundled 6095ms' with 1416 modules, 0 page errors on load). UI spot-checks (mobile viewport 390×844): login screen renders with testIDs login-email / login-password / login-submit / login-go-register; after login with joao@teste.com (migrated patient_monitored) Home renders all expected testIDs — card-equipment-status, status-dot, treatment-state, metric-temperature (37.7 °C), metric-humidity (61 %), card-wound-analysis, card-alerts, card-contacts, topbar-menu; Temperatura elevada alert visible; drawer opens via topbar-menu and shows all 5 items (Configurações, Conectar equipamento, Sobre, Ajuda, Política de privacidade); bottom tabs navigate correctly (Calendário → /calendar, Avisos → /notices, Perfil → /profile, Home → /home); Settings → 'Exportar relatório' button is tappable and does not crash (matches iter-4 contract); Register screen shows all 3 role toggles (register-role-monitored / autonomous / doctor). BLE service file still exports TARGET_DEVICE_NAME='TERESA01', TERESA_SERVICE_UUID='7b4c0001-7f9d-4a2e-9d7c-6f3e2a1b0001', TERESA_TELEMETRY_CHAR / TERESA_COMMAND_CHAR, and parseTeresaTelemetry at the expected lines. Only benign RN-Web deprecation warnings carried over from iter-4 (shadow*, pointerEvents, useNativeDriver). No SDK-57 regression detected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web styles (multiple)", "issue": "Carry-over from iter-4 — console warnings '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-fatal, web-only. Not introduced by SDK 57 upgrade."},
+      {"component": "Animated API on web", "issue": "Carry-over — 'Animated: useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' Web preview only; native build will not warn."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iter5.xml"
+  ],
+  "action_items": [
+    "No SDK-57 regressions found. Upgrade is safe to ship.",
+    "Known pre-existing (not a regression): Settings → 'Exportar relatório' on the WEB preview surfaces a 'Falha ao gerar relatório' toast because expo-print's printToFileAsync is iOS/Android-only. The button itself is tappable and the handler catches the error cleanly — same behavior as SDK 54. If PDF export on web is desired, use Print.printAsync (opens browser print dialog) when Platform.OS === 'web', otherwise keep printToFileAsync for native builds. /app/frontend/app/(app)/settings.tsx:51.",
+    "Optional cosmetic (carry-over): migrate 'shadow*' / props.pointerEvents / useNativeDriver=true usages behind Platform.OS !== 'web' to silence RN-Web deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "package.json: expo@^57.0.0, react@19.2.3, react-native@0.86.3, expo-router@~57.0.24, react-native-reanimated@4.5.1, react-native-worklets@0.10.1, react-native-screens@~4.26.0, react-native-safe-area-context@~5.7.0 — all expected SDK-57 majors present.",
+    "app.json cleanup looks correct — no root 'newArchEnabled' and no 'android.edgeToEdgeEnabled' (both default-on under SDK 57). Plugins list retains expo-router, expo-splash-screen, expo-camera, expo-image-picker, react-native-ble-plx with BLE background + central mode preserved.",
+    "/app/frontend/app/(app)/settings.tsx:51 Print.printToFileAsync is called unconditionally. On native this works; on the web preview it rejects (expo-print web only exposes Print.printAsync). Not an SDK-57 regression, but worth gating by Platform.OS to silence the error toast on web demos.",
+    "/app/frontend/src/services/ble.ts constants intact at lines 31-34; parseTeresaTelemetry at line 448 (not modified by SDK bump).",
+    "backend/server.py untouched by the upgrade — regression suite confirms 29/29."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (29/29 pytest; LLM-slow full_feedback_cycle intentionally skipped per E1 note)",
+    "frontend": "100% of SDK-57 regression spot-checks: bundle OK, login OK, patient_monitored Home OK, drawer 5-items OK, tabs navigation OK, register 3-roles OK, Settings export does not crash, BLE constants intact. No new regressions."
+  },
+  "seed_data_creation": "Pytest run created ephemeral TEST_ accounts (test_pm_*, test_pa_*, test_doc_*, test_doc2_*, test_dp_*) via /api/auth/register and /api/doctor/patients, all with password 'senha123'. UI spot-check reused the pre-existing joao@teste.com (migrated to patient_monitored).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "SDK 57 upgrade verified. Backend regression source of truth: /app/backend/tests/backend_test.py (29 fast + 1 slow LLM feedback_cycle; invoke with `-k 'not full_feedback_cycle'`). Preview URL in frontend/.env is EXPO_PUBLIC_BACKEND_URL=https://wound-healing-1.preview.emergentagent.com. On the WEB preview, expo-print's printToFileAsync raises — expected; not a regression. Correct Home testIDs are card-equipment-status / card-wound-analysis / card-alerts / card-contacts / topbar-menu (NOT 'wound-analysis' or 'drawer-toggle' used in the review_request bullet). Drawer open testID = topbar-menu; drawer close = drawer-close. BLE still cannot be exercised in the browser; parser + UUIDs verified by source inspection.",
+  "rca_of_issue": "N/A — this iteration validated the SDK 54 → 57 upgrade. No bugs introduced. The only user-visible 'red toast' (Settings → Exportar relatório on web) is a pre-existing expo-print web limitation unchanged from SDK 54, and the handler catches it gracefully (does not crash)."
+}

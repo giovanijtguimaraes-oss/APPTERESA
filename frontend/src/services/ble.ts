@@ -23,7 +23,7 @@
  * Expo Go / web (where native BLE is unavailable).
  */
 
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 
 // ============================================================================
 // Firmware constants — MATCH THE ARDUINO SKETCH. Do NOT change.
@@ -81,12 +81,17 @@ export function labelForState(s: TreatmentState): string {
  * `connected` means BLE is linked AND we're actually receiving valid
  * telemetry. `connecting` covers the initial handshake and the window
  * between a successful BLE link and the first telemetry frame.
+ * `reconnecting` is set while the auto-reconnect scheduler is retrying.
+ * `bt_off` / `unauthorized` surface precise error reasons.
  */
 export type ConnectionState =
   | 'disconnected'
   | 'scanning'
   | 'connecting'
   | 'connected'
+  | 'reconnecting'
+  | 'bt_off'
+  | 'unauthorized'
   | 'error';
 
 export interface BleDevice {
@@ -103,11 +108,27 @@ export interface TeresaTelemetry {
   received_at: string;
 }
 
+/** Raw diagnostic entry — useful during physical bench tests. */
+export interface DiagnosticEntry {
+  at: string;         // ISO timestamp
+  level: 'info' | 'warn' | 'error' | 'rx';
+  text: string;       // human readable
+}
+
 /** Command payloads (not sent in this phase — reserved for future). */
 export type Command =
   | { type: 'start_session' }
   | { type: 'pause_session' }
   | { type: 'stop_session' };
+
+export interface ConnectionMeta {
+  state: ConnectionState;
+  reconnectAttempt: number;
+  maxReconnectAttempts: number;
+  framesReceived: number;
+  lastFrameAt: string | null;      // ISO timestamp
+  lastRawFrame: string | null;     // raw payload of the latest frame
+}
 
 type Listener<T> = (v: T) => void;
 
@@ -116,8 +137,9 @@ type Listener<T> = (v: T) => void;
 // ============================================================================
 const TELEMETRY_TIMEOUT_MS = 10_000; // ESP32 sends every ~1s; 10s silence ⇒ dead
 const RECONNECT_DELAY_MS = 3_000;
-const MAX_RECONNECT_ATTEMPTS = 5;
-const SCAN_TIMEOUT_MS = 10_000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const SCAN_TIMEOUT_MS = 12_000;
+const DIAGNOSTIC_BUFFER = 40;
 
 // ============================================================================
 // Service implementation
@@ -129,11 +151,17 @@ class BleService {
 
   private state: ConnectionState = 'disconnected';
   private lastTelemetry: TeresaTelemetry | null = null;
+  private framesReceived = 0;
+  private lastFrameAt: string | null = null;
+  private lastRawFrame: string | null = null;
 
   private stateListeners = new Set<Listener<ConnectionState>>();
   private deviceListeners = new Set<Listener<BleDevice[]>>();
   private telemetryListeners = new Set<Listener<TeresaTelemetry>>();
+  private metaListeners = new Set<Listener<ConnectionMeta>>();
+  private diagnosticListeners = new Set<Listener<DiagnosticEntry[]>>();
   private discoveredDevices = new Map<string, BleDevice>();
+  private diagnostics: DiagnosticEntry[] = [];
 
   private telemetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private scanTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -142,6 +170,7 @@ class BleService {
 
   private telemetrySubscription: any | null = null;
   private disconnectSubscription: any | null = null;
+  private btStateSubscription: any | null = null;
 
   // --------------------------------------------------------------------------
   private tryLoadManager(): boolean {
@@ -150,6 +179,20 @@ class BleService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { BleManager } = require('react-native-ble-plx');
       this.manager = new BleManager();
+      // Subscribe to BT state changes so UI can react to the radio turning off.
+      try {
+        this.btStateSubscription = this.manager.onStateChange((btState: string) => {
+          this.diag('info', `BT radio: ${btState}`);
+          if (btState === 'PoweredOff') {
+            this.setState('bt_off');
+            this.cleanupConnection();
+          } else if (btState === 'Unauthorized') {
+            this.setState('unauthorized');
+          }
+        }, true);
+      } catch (e) {
+        console.warn('BT state subscribe failed', (e as Error).message);
+      }
       return true;
     } catch (e) {
       console.warn('BLE unavailable (Expo Go / web):', (e as Error).message);
@@ -169,6 +212,21 @@ class BleService {
 
   getLastTelemetry(): TeresaTelemetry | null {
     return this.lastTelemetry;
+  }
+
+  getMeta(): ConnectionMeta {
+    return {
+      state: this.state,
+      reconnectAttempt: this.reconnectAttempts,
+      maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
+      framesReceived: this.framesReceived,
+      lastFrameAt: this.lastFrameAt,
+      lastRawFrame: this.lastRawFrame,
+    };
+  }
+
+  getDiagnostics(): DiagnosticEntry[] {
+    return [...this.diagnostics];
   }
 
   onStateChange(fn: Listener<ConnectionState>): () => void {
@@ -195,10 +253,27 @@ class BleService {
     };
   }
 
+  onMeta(fn: Listener<ConnectionMeta>): () => void {
+    this.metaListeners.add(fn);
+    fn(this.getMeta());
+    return () => {
+      this.metaListeners.delete(fn);
+    };
+  }
+
+  onDiagnostics(fn: Listener<DiagnosticEntry[]>): () => void {
+    this.diagnosticListeners.add(fn);
+    fn([...this.diagnostics]);
+    return () => {
+      this.diagnosticListeners.delete(fn);
+    };
+  }
+
   private setState(s: ConnectionState): void {
     if (this.state === s) return;
     this.state = s;
     this.stateListeners.forEach((fn) => fn(s));
+    this.emitMeta();
   }
 
   private emitDevices(): void {
@@ -206,24 +281,114 @@ class BleService {
     this.deviceListeners.forEach((fn) => fn(list));
   }
 
+  private emitMeta(): void {
+    const m = this.getMeta();
+    this.metaListeners.forEach((fn) => fn(m));
+  }
+
+  private diag(level: DiagnosticEntry['level'], text: string): void {
+    const entry: DiagnosticEntry = {
+      at: new Date().toISOString(),
+      level,
+      text,
+    };
+    this.diagnostics.push(entry);
+    if (this.diagnostics.length > DIAGNOSTIC_BUFFER) {
+      this.diagnostics = this.diagnostics.slice(-DIAGNOSTIC_BUFFER);
+    }
+    const copy = [...this.diagnostics];
+    this.diagnosticListeners.forEach((fn) => fn(copy));
+  }
+
+  clearDiagnostics(): void {
+    this.diagnostics = [];
+    this.diagnosticListeners.forEach((fn) => fn([]));
+  }
+
+  // --------------------------------------------------------------------------
+  // Permissions (Android 12+ requires BLUETOOTH_SCAN/CONNECT at runtime; <12
+  // needs ACCESS_FINE_LOCATION). iOS requests the Bluetooth prompt on first
+  // scan automatically via Info.plist.
+  // --------------------------------------------------------------------------
+  async requestPermissions(): Promise<boolean> {
+    if (Platform.OS !== 'android') return true;
+
+    const apiLevel = Number(Platform.Version);
+    const required: string[] =
+      apiLevel >= 31
+        ? [
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          ]
+        : [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
+
+    try {
+      const granted = await PermissionsAndroid.requestMultiple(required as any);
+      const allOk = Object.values(granted).every(
+        (v) => v === PermissionsAndroid.RESULTS.GRANTED,
+      );
+      if (!allOk) {
+        const denied = Object.entries(granted)
+          .filter(([, v]) => v !== PermissionsAndroid.RESULTS.GRANTED)
+          .map(([k]) => k.replace('android.permission.', ''));
+        this.diag('warn', `Permissões negadas: ${denied.join(', ')}`);
+        this.setState('unauthorized');
+      }
+      return allOk;
+    } catch (e) {
+      this.diag('error', `Erro em permissões: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  async getBluetoothState(): Promise<string> {
+    if (!this.isAvailable()) return 'Unknown';
+    try {
+      return await this.manager.state();
+    } catch {
+      return 'Unknown';
+    }
+  }
+
   // --------------------------------------------------------------------------
   // Scan — only surface devices whose advertised name is TERESA01
   // --------------------------------------------------------------------------
   async startScan(): Promise<void> {
     if (!this.isAvailable()) {
+      this.diag('error', 'BLE indisponível (Expo Go / web).');
       this.setState('error');
       return;
     }
+
+    const permitted = await this.requestPermissions();
+    if (!permitted) {
+      this.diag('error', 'Permissões Bluetooth não concedidas.');
+      this.setState('unauthorized');
+      return;
+    }
+
+    const btState = await this.getBluetoothState();
+    this.diag('info', `BT state antes do scan: ${btState}`);
+    if (btState === 'PoweredOff') {
+      this.setState('bt_off');
+      return;
+    }
+    if (btState === 'Unauthorized') {
+      this.setState('unauthorized');
+      return;
+    }
+
     this.discoveredDevices.clear();
     this.emitDevices();
     this.setState('scanning');
+    this.diag('info', `Procurando por "${TARGET_DEVICE_NAME}"…`);
 
     this.manager.startDeviceScan(
       null,
       { allowDuplicates: false },
       (error: any, device: any) => {
         if (error) {
-          console.warn('BLE scan error', error);
+          this.diag('error', `Scan error: ${error?.message ?? 'desconhecido'}`);
           this.setState('error');
           return;
         }
@@ -232,18 +397,25 @@ class BleService {
         if (!name) return;
         // ESP32-C3 firmware advertises exactly "TERESA01".
         if (name.toUpperCase() !== TARGET_DEVICE_NAME) return;
+        const existed = this.discoveredDevices.has(device.id);
         this.discoveredDevices.set(device.id, {
           id: device.id,
           name,
           rssi: device.rssi ?? null,
         });
+        if (!existed) {
+          this.diag('info', `TERESA01 encontrado (${device.id}, ${device.rssi ?? '?'} dBm)`);
+        }
         this.emitDevices();
       },
     );
 
     if (this.scanTimeoutId) clearTimeout(this.scanTimeoutId);
     this.scanTimeoutId = setTimeout(() => {
-      if (this.state === 'scanning') this.stopScan();
+      if (this.state === 'scanning') {
+        this.diag('info', 'Scan expirou (12s).');
+        this.stopScan();
+      }
     }, SCAN_TIMEOUT_MS);
   }
 
@@ -267,6 +439,7 @@ class BleService {
     this.stopScan();
     this.reconnectAttempts = 0;
     this.lastConnectedDeviceId = deviceId;
+    this.diag('info', `Conectando a ${deviceId}…`);
     await this.performConnect(deviceId);
   }
 
@@ -277,6 +450,7 @@ class BleService {
       const device = await this.manager.connectToDevice(deviceId, {
         requestMTU: 185,
       });
+      this.diag('info', `BLE link OK (${deviceId}). Descobrindo serviços…`);
       await device.discoverAllServicesAndCharacteristics();
       this.connectedDevice = device;
       this.lastConnectedDeviceId = deviceId;
@@ -284,15 +458,15 @@ class BleService {
       this.disconnectSubscription = this.manager.onDeviceDisconnected(
         deviceId,
         (error: any) => {
-          console.warn('BLE device disconnected', error?.message);
+          this.diag('warn', `Desconexão detectada${error?.message ? ': ' + error.message : ''}`);
           this.handleDisconnect();
         },
       );
 
       this.subscribeTelemetry();
       // Stay in `connecting` until the first valid frame arrives.
-    } catch (e) {
-      console.warn('BLE connect error', e);
+    } catch (e: any) {
+      this.diag('error', `Falha ao conectar: ${e?.message ?? e}`);
       this.setState('error');
       this.scheduleReconnect();
     }
@@ -308,7 +482,21 @@ class BleService {
 
     await this.cleanupConnection();
     this.lastTelemetry = null;
+    this.framesReceived = 0;
+    this.lastFrameAt = null;
+    this.lastRawFrame = null;
+    this.diag('info', 'Desconectado pelo usuário.');
     this.setState('disconnected');
+  }
+
+  cancelReconnect(): void {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    this.reconnectAttempts = MAX_RECONNECT_ATTEMPTS;
+    if (this.state === 'reconnecting') this.setState('disconnected');
+    this.diag('info', 'Reconexão automática cancelada.');
   }
 
   private async cleanupConnection(): Promise<void> {
@@ -353,32 +541,44 @@ class BleService {
         TERESA_TELEMETRY_CHAR,
         (error: any, char: any) => {
           if (error) {
-            console.warn('telemetry monitor error', error.message);
+            this.diag('error', `monitor error: ${error?.message ?? 'desconhecido'}`);
             return;
           }
           if (!char?.value) return;
           try {
             const raw = decodeBase64(char.value);
             const parsed = parseTeresaTelemetry(raw);
-            if (!parsed) return;
+            if (!parsed) {
+              this.diag('warn', `Frame inválido ignorado: "${raw}"`);
+              return;
+            }
             this.lastTelemetry = parsed;
+            this.framesReceived += 1;
+            this.lastFrameAt = parsed.received_at;
+            this.lastRawFrame = raw;
+            if (this.state !== 'connected') {
+              this.diag('info', 'Primeiro frame válido recebido — CONECTADO.');
+            }
+            this.diag('rx', raw);
             this.setState('connected');
+            this.reconnectAttempts = 0;
             this.telemetryListeners.forEach((fn) => fn(parsed));
+            this.emitMeta();
             this.armTelemetryTimeout();
           } catch (e) {
-            console.warn('telemetry parse error', e);
+            this.diag('error', `parse error: ${(e as Error).message}`);
           }
         },
       );
-    } catch (e) {
-      console.warn('subscribe telemetry error', e);
+    } catch (e: any) {
+      this.diag('error', `subscribe telemetry error: ${e?.message ?? e}`);
     }
   }
 
   private armTelemetryTimeout(): void {
     if (this.telemetryTimeoutId) clearTimeout(this.telemetryTimeoutId);
     this.telemetryTimeoutId = setTimeout(() => {
-      console.warn('telemetry timeout — treating as disconnected');
+      this.diag('warn', `Sem telemetria por ${TELEMETRY_TIMEOUT_MS / 1000}s — assumindo desconexão.`);
       this.handleDisconnect();
     }, TELEMETRY_TIMEOUT_MS);
   }
@@ -399,15 +599,29 @@ class BleService {
     }
     this.lastTelemetry = null;
     this.connectedDevice = null;
-    this.setState('disconnected');
     this.scheduleReconnect();
   }
 
   private scheduleReconnect(): void {
-    if (!this.lastConnectedDeviceId) return;
-    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+    if (!this.lastConnectedDeviceId) {
+      this.setState('disconnected');
+      return;
+    }
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      this.diag('error', `Limite de reconexão atingido (${MAX_RECONNECT_ATTEMPTS}). Toque em "Conectar" novamente.`);
+      this.setState('disconnected');
+      return;
+    }
     if (this.reconnectTimeoutId) return;
     this.reconnectAttempts += 1;
+    this.setState('reconnecting');
+    this.diag(
+      'info',
+      `Reagendando reconexão (tentativa ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}) em ${
+        RECONNECT_DELAY_MS / 1000
+      }s…`,
+    );
+    this.emitMeta();
     this.reconnectTimeoutId = setTimeout(() => {
       this.reconnectTimeoutId = null;
       if (this.lastConnectedDeviceId) {

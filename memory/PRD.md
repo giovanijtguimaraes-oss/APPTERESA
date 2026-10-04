@@ -1,21 +1,39 @@
-# T.E.R.E.S.A. — Product Requirements Document (iteration 4)
+# T.E.R.E.S.A. — Product Requirements Document (iteration 5)
 
 ## Nome do produto
 **T.E.R.E.S.A.** — Tecnologia Especializada em Recuperação e Estímulo à Saúde Avançada.
 
-App mobile React Native (Expo) para acompanhamento de cicatrização integrado
+App mobile React Native (Expo SDK 57) para acompanhamento de cicatrização integrado
 ao equipamento biomédico ESP32-C3 **TERESA01**, com perfis para Médico(a),
 paciente **monitorado** (usa o equipamento) e paciente **autônomo** (só análise
 fotográfica da ferida).
 
 ## Stack
-- **Frontend**: Expo SDK 54, expo-router, TypeScript, React Native SVG,
-  react-native-keyboard-controller, **react-native-ble-plx**, expo-camera /
+- **Frontend**: Expo SDK 57, expo-router, TypeScript, React Native SVG,
+  react-native-keyboard-controller, **react-native-ble-plx 3.5.1**, expo-camera /
   expo-image-picker, **expo-print + expo-sharing** (PDF), expo-linking (WhatsApp).
 - **Backend**: FastAPI + Motor (async MongoDB) + bcrypt + PyJWT.
 - **IA**: Emergent LLM Key → GPT-5.2 vision (via `emergentintegrations`) para
   análise de feridas; não é diagnóstico.
 - **Hardware**: ESP32-C3 anunciando `TERESA01`, firmware Arduino não é alterado.
+
+## Monitoramento BLE (iteração 5 — melhorado)
+Estados de conexão expostos pelo `bleService`:
+`disconnected | scanning | connecting | connected | reconnecting | bt_off | unauthorized | error`.
+
+- Verificação do estado do rádio Bluetooth antes de scan (`PoweredOff` → `bt_off`).
+- Solicita permissões Android em runtime (BLUETOOTH_SCAN/CONNECT em API ≥ 31; ACCESS_FINE_LOCATION em versões anteriores).
+- Reconexão automática: até 10 tentativas (antes: 5) com 3 s de backoff.
+- `connected` só é definido após o 1º frame válido de telemetria (BLE link sozinho não conta).
+- Buffer de diagnóstico com 40 entradas (RX/INFO/WARN/ERROR) exposto na tela "Conectar equipamento" para auditoria física.
+- Métricas expostas via `onMeta`: `reconnectAttempt`, `maxReconnectAttempts`, `framesReceived`, `lastFrameAt`, `lastRawFrame`.
+
+A Home do paciente monitorado passou a exibir:
+- Status rico: `CONECTADO`, `CONECTANDO…`, `RECONECTANDO X/Y`, `BLUETOOTH DESLIGADO`, `PERMISSÃO NEGADA`, `DESCONECTADO`.
+- Sub-label "Última leitura há Xs · N frames" quando conectado.
+- Temp/umidade/estado continuam dominados pela telemetria em tempo real quando o TERESA01 está conectado (nunca mock).
+
+Documento de teste físico: `/app/BLE_BENCH_TEST.md`.
 
 ## Perfis & RBAC
 | Role                   | Capacidades principais                                                           |
@@ -26,7 +44,7 @@ fotográfica da ferida).
 
 Migração automática na startup: `role="patient"` → `role="patient_monitored"`.
 
-## Protocolo BLE (adaptado ao firmware)
+## Protocolo BLE (adaptado ao firmware — CONGELADO)
 Todas as constantes vivem em `frontend/src/services/ble.ts`:
 
 ```ts

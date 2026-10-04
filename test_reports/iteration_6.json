@@ -1,0 +1,38 @@
+{
+  "summary": "T.E.R.E.S.A. iteration 6 — Frontend-only regression on BLE UX enhancements (ble.ts + connect.tsx + home.tsx). All 7 review-request checks pass on the web preview (mobile viewport 390x844). No white-screen, no page errors, no new console errors beyond the pre-existing RN-Web deprecation warnings. Seed user pm.ble@teste.com already existed; doc.teste@teste.com was (re)registered via POST /api/auth/register and login succeeds. On the Monitored Patient Home, the 'Sistema de aquecimento' card renders the gray dot + 'DESCONECTADO' label and the 'Conectar' button navigates to /connect. The Connect screen renders every expected element: status card (dot + 'Desconectado' + 'Buscar dispositivos' btn-scan + blue 'ble-not-supported' info-box with the exact 'BLE funciona apenas em builds nativos (iOS/Android)...' copy), 'Dispositivos encontrados' empty state (bluetooth-outline icon + 'Nenhum dispositivo' + TERESA01 pairing hint), new 'Diagnóstico BLE' card with the 'Limpar' link (btn-clear-diag) and the 'Os eventos BLE (scan, conexão, frames recebidos, erros) aparecerão aqui...' helper text, and the 'Passo a passo' card with all 8 numbered items (new copy). Doctor login works end-to-end: Doctor Home renders with the 'Selecionar paciente / Nenhum paciente' picker. Register screen shows the 3 role toggles (register-role-monitored/autonomous/doctor). No React Native deprecated-package issues detected; no SafeAreaView issues; no new red screens. The only console warnings observed are the carry-over RN-Web 'shadow*' / 'props.pointerEvents' deprecations already documented in iter-5.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web styles (carry-over, not introduced in this session)", "issue": "Console warnings on web preview: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-fatal, web-only, same as iter-4/iter-5. Reference: observed in Expo Router entry bundle (styles in multiple components)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_iter5.xml (prior backend run; backend not re-tested this iter per request)"
+  ],
+  "action_items": [
+    "No regressions detected in BLE UX changes. Safe to ship.",
+    "Optional cosmetic (carry-over, not required): silence 'shadow*' and 'props.pointerEvents' deprecation warnings on web by migrating to style.boxShadow / style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/services/ble.ts: all previous public symbols (TARGET_DEVICE_NAME, TERESA_SERVICE_UUID, TERESA_TELEMETRY_CHAR, TERESA_COMMAND_CHAR, parseTeresaTelemetry, labelForState, KNOWN_STATES, bleService singleton) preserved. New additions compile and are consumed by connect.tsx and home.tsx: ConnectionState variants reconnecting/bt_off/unauthorized, ConnectionMeta, DiagnosticEntry, onMeta, onDiagnostics, getMeta, getDiagnostics, clearDiagnostics, cancelReconnect, requestPermissions, BT state subscription (ble.ts:184-193). MAX_RECONNECT_ATTEMPTS=10 (ble.ts:140). File is 700 lines — borderline against the 700-line guideline but still a single cohesive service module; split only if it keeps growing.",
+    "/app/frontend/app/(app)/connect.tsx: 589 lines. All new UI elements correctly guarded by state (bt_off, unauthorized, reconnecting, connected). openSettings() uses expo-linking.openSettings() with a catch → toast. btn-clear-diag calls bleService.clearDiagnostics(). testIDs are complete: connect-status-card, btn-scan, btn-disconnect, btn-cancel-reconnect, btn-open-settings-bt, btn-open-settings-perm, hint-bt-off, hint-permissions, ble-not-supported, devices-card, live-tele-card, diag-card, btn-clear-diag, steps-card, status-reconnect-sub, status-last-rx. STATE_INFO covers all 8 ConnectionState variants.",
+    "/app/frontend/app/(app)/(tabs)/home.tsx:320-336 — statusMeta correctly maps all 7 relevant states to CONECTADO / CONECTANDO… / RECONECTANDO X/Y / BLUETOOTH DESLIGADO / PERMISSÃO NEGADA / DESCONECTADO. Logic for displayTemp/displayHum/treatmentState (home.tsx:315-318) unchanged — only promoted to real telemetry when `connected && telemetry`. Live 1-second ticker for 'última leitura há Xs' uses useRef+setInterval and clears on unmount.",
+    "Live verification on web preview (BLE unavailable) kept the Home card in 'DESCONECTADO' state exactly as expected, confirming the fallback path is intact."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (backend not changed and not re-tested in this iteration per E1's scope)",
+    "frontend": "100% of the 7 review-request checks (login x2, Home status card label+dot, Conectar→/connect navigation, Connect screen 4 sub-checks, console-error cleanliness, Doctor Home patient picker, register 3-roles)"
+  },
+  "seed_data_creation": "Registered doc.teste@teste.com / senha123 (role=doctor, name='Dra. Teste') via POST /api/auth/register — it was missing from the backend DB. pm.ble@teste.com / senha123 (role=patient_monitored) already existed from the previous session; login verified. pa.ble@teste.com NOT created (not required by the review scope).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "BLE UX changes verified. Preview URL = https://wound-healing-1.preview.emergentagent.com (frontend/.env EXPO_PUBLIC_BACKEND_URL). Credentials: doc.teste@teste.com / senha123 (doctor), pm.ble@teste.com / senha123 (patient_monitored). The Connect screen on web correctly renders every panel with BLE in 'disconnected' state and surfaces the blue 'ble-not-supported' info-box via testID='ble-not-supported'. The Diagnóstico BLE card (testID='diag-card') is the new addition and renders its helper text when the diagnostics buffer is empty. Real BLE scan/connect/telemetry cannot be exercised in the browser — see /app/BLE_BENCH_TEST.md for the physical ESP32-C3 test plan. Backend not retested; last green run is /app/test_reports/pytest/pytest_iter5.xml.",
+  "rca_of_issue": "N/A — pure regression check. Only setup action required was registering the doctor seed account (doc.teste@teste.com), which was absent from the preview DB."
+}
