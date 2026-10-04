@@ -24,6 +24,7 @@
  */
 
 import { PermissionsAndroid, Platform } from 'react-native';
+import { Buffer } from 'buffer';
 
 // ============================================================================
 // Firmware constants — MATCH THE ARDUINO SKETCH. Do NOT change.
@@ -650,8 +651,6 @@ class BleService {
 // ============================================================================
 function decodeBase64(b64: string): string {
   if (typeof globalThis.atob === 'function') return globalThis.atob(b64);
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Buffer } = require('buffer');
   return Buffer.from(b64, 'base64').toString('utf-8');
 }
 
