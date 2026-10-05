@@ -173,3 +173,50 @@ agent_communication:
       card shows "DESCONECTADO" + 'Equipamento desconectado' badge (since BLE
       is unavailable on web). Backend endpoints did NOT change in this session,
       so any auth regression indicates a frontend-only side effect.
+
+
+frontend:
+  - task: "Fix: Android Gradle build fails — rootProject.name ends with '.'"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app.json"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: >
+          Build log (Job 0b1df3a1-...) showed RUN_GRADLEW failing with:
+          "The project name 'T.E.R.E.S.A.' must not start or end with a '.'"
+          at /home/expo/workingdir/build/android/settings.gradle:34. Gradle 9.3.1
+          introduced this validation. Fix: changed expo.name from "T.E.R.E.S.A."
+          to "T.E.R.E.S.A" (removed trailing period) so Gradle's
+          rootProject.name is valid. Preserved the branded display name on iOS
+          by adding ios.infoPlist.CFBundleDisplayName = "T.E.R.E.S.A." (iOS has
+          no such restriction). On Android the launcher label becomes
+          "T.E.R.E.S.A" which keeps the acronym intact. NO changes to BLE
+          UUIDs, bundle identifier (com.emergent.woundhealing.s4m7rd), package,
+          scheme, slug, business logic, DB, or any screen content.
+          Metro bundling (EAGER_BUNDLE), expo-doctor (20/20), lint and web
+          preview all pass. The actual Gradle run can only be validated by
+          re-triggering the EAS Android build.
+
+test_plan:
+  current_focus:
+    - "Fix: Android Gradle build fails — rootProject.name ends with '.'"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: >
+      Pure config fix in app.json. Please run FRONTEND regression ONLY (web
+      preview is fine; the real Gradle test needs the EAS deploy re-run which
+      is not reachable from here). Validate: (1) login as doctor and
+      patient_monitored still works, (2) Home renders without issue, (3) the
+      TopBar / drawer still shows the "T.E.R.E.S.A." branding (the brand
+      *inside* the UI is hard-coded in TopBar.tsx and is NOT driven by
+      app.json name), (4) no console errors on load. Do not try to validate
+      Gradle; that only runs in the EAS pipeline.

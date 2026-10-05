@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "T.E.R.E.S.A.",
+    "name": "T.E.R.E.S.A",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,6 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.woundhealing.s4m7rd",
       "infoPlist": {
+        "CFBundleDisplayName": "T.E.R.E.S.A.",
         "NSCameraUsageDescription": "Fotografar feridas para análise clínica",
         "NSPhotoLibraryUsageDescription": "Selecionar fotos da ferida para análise",
         "NSBluetoothAlwaysUsageDescription": "Conectar ao equipamento T.E.R.E.S.A.",

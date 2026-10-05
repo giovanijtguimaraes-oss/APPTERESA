@@ -1,0 +1,28 @@
+{
+  "summary": "PASS - Regression check after app.json fix (expo.name 'T.E.R.E.S.A.' -> 'T.E.R.E.S.A'). Web preview loads cleanly, no white screen, no new console errors (only pre-existing shadow* deprecation warnings). All 3 role logins succeed (doctor/pm.ble/pa.teste), all redirect to /home. In-app branding 'T.E.R.E.S.A.' (with trailing dot) remains intact in TopBar and login/register headlines - confirmed hardcoded strings were not affected by app.json change. Doctor Home shows patient picker ('Selecionar paciente' -> 'Nenhum paciente'). Monitored Home shows 'Sistema de aquecimento' card with 'DESCONECTADO'. /connect renders diagnostic BLE panel + status card. Register screen shows all 3 role tabs: Monitorado / Autônomo / Médico(a). iOS CFBundleDisplayName was correctly set to 'T.E.R.E.S.A.' preserving brand with dot on iOS homescreen. The HTML <title> now reads 'T.E.R.E.S.A' (expected, matches expo.name).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo packages", "issue": "expo@54.0.35 and expo-constants@18.0.13 are slightly behind recommended (54.0.37 / 18.0.14). Non-blocking but flagged by Expo on startup. Reference: /var/log/supervisor/expo.err.log"}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "No action needed for the current fix - regression is clean.",
+    "Optional (unrelated to this fix): bump expo and expo-constants to the versions suggested by Expo CLI to silence the compatibility warning before next EAS build."
+  ],
+  "critical_code_review_comments": [
+    "app.json fix is minimal and correct: expo.name changed to 'T.E.R.E.S.A' (no trailing dot) which satisfies Gradle rootProject.name rule, while ios.infoPlist.CFBundleDisplayName='T.E.R.E.S.A.' preserves branding on iOS homescreen.",
+    "In-app brand strings (TopBar title, login/register headlines) are hardcoded in TSX and remain 'T.E.R.E.S.A.' with the dot - unaffected by app.json, verified visually."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created missing pa.teste@teste.com (patient_autonomous) via POST /api/auth/register. doc.teste and pm.ble already existed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Gradle build fix for EAS: app.json expo.name must not end with '.' - current value 'T.E.R.E.S.A' is correct. Real validation of Android build happens in the EAS pipeline, not locally. Three test accounts exist in DB: doc.teste@teste.com (doctor), pm.ble@teste.com (patient_monitored), pa.teste@teste.com (patient_autonomous), all password 'senha123'. Login testIDs: 'login-email' and 'login-password'; submit button uses role=button name='Entrar' (no testID currently on submit button - may want to add one in a future iteration).",
+  "rca_of_issue": "Original failure: Gradle 9.3.1 rejected rootProject.name='T.E.R.E.S.A.' at settings.gradle:34 because project name cannot start or end with '.'. Root cause: Expo passes expo.name directly to Gradle as rootProject.name. Fix: strip trailing dot from expo.name only; preserve user-facing brand via platform-specific display name fields (ios.infoPlist.CFBundleDisplayName, Android label defaults to expo.name but on-screen branding comes from in-app strings so unaffected)."
+}
