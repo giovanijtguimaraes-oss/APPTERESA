@@ -1,11 +1,28 @@
 /**
  * Lightweight HTTP client that attaches the JWT stored in secure storage.
  * All backend routes are prefixed with /api.
+ *
+ * BASE_URL selection:
+ * - DEV (Metro dev-server / Expo Go / web preview): uses the preview URL in
+ *   `EXPO_PUBLIC_BACKEND_URL`, so hot-reload hits the same container the
+ *   agent runs in.
+ * - RELEASE (built APK/IPA that end-users install): uses the permanent
+ *   production URL in `EXPO_PUBLIC_PROD_BACKEND_URL`. The preview container
+ *   can go idle; the production deployment at `*.emergent.host` is 24/7, so
+ *   the APK must point there to avoid login/register failures.
  */
 
 import { storage } from '@/src/utils/storage';
 
-const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
+// `__DEV__` is injected by Metro: true when running from the dev-server /
+// Expo Go, false in a release binary. Fallback to the preview URL if the
+// prod URL is not provided (keeps older envs working).
+declare const __DEV__: boolean;
+const DEV_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const PROD_URL = process.env.EXPO_PUBLIC_PROD_BACKEND_URL;
+const BASE_URL = (typeof __DEV__ !== 'undefined' && __DEV__
+  ? DEV_URL
+  : (PROD_URL || DEV_URL)) as string;
 
 export type ApiError = { status: number; detail: string };
 
@@ -38,14 +55,45 @@ async function request<T>(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}/api${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // Network errors (airplane mode, DNS fail, server down, cold start) are
+  // surfaced as readable messages so the user sees "Sem conexão" instead of
+  // a generic "Falha no login". A 15 s timeout prevents the UI from hanging
+  // when the preview container is spinning up.
+  const controller =
+    typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), 15000)
+    : null;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/api${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller?.signal,
+    });
+  } catch (e: any) {
+    const isAbort = e?.name === 'AbortError';
+    const detail = isAbort
+      ? 'O servidor demorou demais para responder. Verifique sua internet.'
+      : 'Sem conexão com o servidor. Verifique sua internet e tente novamente.';
+    const err: ApiError = { status: 0, detail };
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Non-JSON response — keep raw text in detail below.
+      data = { detail: text.slice(0, 200) };
+    }
+  }
 
   if (!res.ok) {
     const detail =

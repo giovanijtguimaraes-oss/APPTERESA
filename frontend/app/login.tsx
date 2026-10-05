@@ -25,13 +25,18 @@ export default function LoginScreen() {
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
 
   async function handleSubmit() {
-    if (!email || !password) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !password) {
       setToast({ msg: 'Preencha e-mail e senha', type: 'error' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setToast({ msg: 'E-mail inválido', type: 'error' });
       return;
     }
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(cleanEmail, password);
       router.replace('/(app)/(tabs)/home');
     } catch (e: any) {
       setToast({ msg: e?.detail ?? 'Falha no login', type: 'error' });

@@ -1,0 +1,30 @@
+{
+  "summary": "PASS - Full regression after login/register fix (api.ts BASE_URL swap via __DEV__ + 15s AbortController timeout + readable network errors + email/password client-side validation). 14/14 checks passed on mobile viewport (390x844) via the preview URL. Doctor login (doc.teste@teste.com) → /home with 'Olá, Dra. Teste' + patient picker. Monitored patient login (pm.ble@teste.com) → /home with 'Sistema de aquecimento' + 'DESCONECTADO' status card. Invalid e-mail 'notanemail' triggers 'E-mail inválido' toast with NO network request (validated client-side). Register with short password (<6) shows 'Preencha todos os campos (senha ≥ 6 caracteres)' toast and no API call. New patient_monitored registration (role=monitored) lands on patient Home with DESCONECTADO card. New doctor registration lands on doctor Home with patient picker and 4 doctor tabs. /connect renders Diagnóstico BLE panel. No new console errors; only pre-existing shadow* and pointerEvents deprecation warnings (as expected and noted in request).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Pre-existing: 'shadow*' style props are deprecated, use 'boxShadow'. Flagged by request as pre-existing — not caused by this fix. Reference: /app/frontend/src/theme/tokens.ts (shadows object)"},
+      {"component": "props.pointerEvents", "issue": "Pre-existing: props.pointerEvents is deprecated, use style.pointerEvents. Flagged by request as pre-existing — not caused by this fix."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "No action needed — login/register fix is working as specified. All 8 scenarios in the review request validated."
+  ],
+  "critical_code_review_comments": [
+    "api.ts BASE_URL selection via __DEV__ is correct: dev bundles use preview URL, release APK uses EXPO_PUBLIC_PROD_BACKEND_URL. Fallback to DEV_URL when PROD_URL is undefined keeps older envs working.",
+    "AbortController 15s timeout with user-friendly messages ('O servidor demorou demais...' / 'Sem conexão...') is a solid UX improvement over the previous generic 'Falha no login'.",
+    "login.tsx and register.tsx both apply trim().toLowerCase() to email and the same regex /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/ — consistent behavior and short-circuits BEFORE calling the API (verified: invalid email never hits network).",
+    "Minor consistency gap: login.tsx returns early when email/password empty with 'Preencha e-mail e senha', whereas register.tsx checks name+email+password.length<6 together — fine, but future UX could highlight the specific missing field."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No new seed data needed. doc.teste@teste.com and pm.ble@teste.com already exist (/api/auth/login returned 200 with JWT). Two throwaway accounts (test_pm_<ts>@teste.com, test_doc_<ts>@teste.com) were created during registration tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login/register regression passing on preview URL. Three stable test accounts in DB (all password 'senha123'): doc.teste@teste.com (doctor), pm.ble@teste.com (patient_monitored), pa.teste@teste.com (patient_autonomous). Key testIDs: login-email, login-password, login-submit, login-go-register, register-name, register-email, register-password, register-submit, register-role-{monitored,autonomous,doctor}. The web preview cannot verify __DEV__=false (release) behavior — that only takes effect in the EAS-built APK. If a future test needs to verify prod URL fallback, inject process.env.EXPO_PUBLIC_PROD_BACKEND_URL inspection via a debug screen or EAS build.",
+  "rca_of_issue": "Original user complaint: 'Esta sempre dando falha no login e para criar conta' — the installed APK hard-coded the ephemeral *.preview.emergentagent.com URL, which goes offline when the preview container pauses, so every login/register in the APK threw 'Falha no login'. Fix (frontend-only): (1) added EXPO_PUBLIC_PROD_BACKEND_URL=https://wound-healing-1.emergent.host; (2) api.ts picks DEV_URL vs PROD_URL at bundle time via __DEV__ so release builds target the 24/7 production host; (3) replaced generic fetch error with network-aware messages (AbortController 15s + readable detail); (4) client-side e-mail regex + password-length guard to avoid confusing 401s on obvious typos. Verified in preview: both existing users log in, both new registrations complete and land on correct role-specific Home, both validation guards short-circuit the API call."
+}

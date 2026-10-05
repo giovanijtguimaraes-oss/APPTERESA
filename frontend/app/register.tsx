@@ -29,13 +29,22 @@ export default function RegisterScreen() {
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
 
   async function handleSubmit() {
-    if (!name || !email || password.length < 6) {
-      setToast({ msg: 'Preencha todos os campos (senha ≥ 6 caracteres)', type: 'error' });
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+    if (!cleanName || !cleanEmail || password.length < 6) {
+      setToast({
+        msg: 'Preencha todos os campos (senha ≥ 6 caracteres)',
+        type: 'error',
+      });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setToast({ msg: 'E-mail inválido', type: 'error' });
       return;
     }
     setLoading(true);
     try {
-      await register({ name: name.trim(), email: email.trim(), password, role });
+      await register({ name: cleanName, email: cleanEmail, password, role });
       router.replace('/(app)/(tabs)/home');
     } catch (e: any) {
       setToast({ msg: e?.detail ?? 'Falha ao criar conta', type: 'error' });

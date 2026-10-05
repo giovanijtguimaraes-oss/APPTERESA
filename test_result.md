@@ -220,3 +220,76 @@ agent_communication:
       *inside* the UI is hard-coded in TopBar.tsx and is NOT driven by
       app.json name), (4) no console errors on load. Do not try to validate
       Gradle; that only runs in the EAS pipeline.
+
+
+frontend:
+  - task: "Fix: login/register always fail on installed APK (preview URL points to ephemeral container)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/services/api.ts, /app/frontend/.env, /app/frontend/app/login.tsx, /app/frontend/app/register.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: >
+          User reported "sempre dando falha no login e para criar conta" on
+          the installed APK. Root cause: the APK was built with
+          EXPO_PUBLIC_BACKEND_URL pointing to the preview container
+          (wound-healing-1.preview.emergentagent.com), which is ephemeral and
+          goes offline when the preview container pauses. The persistent
+          production backend lives at wound-healing-1.emergent.host.
+
+          Fix (3 parts, all additive — nothing existing was repointed):
+
+          1) Added a NEW env var `EXPO_PUBLIC_PROD_BACKEND_URL=https://wound-healing-1.emergent.host`
+             to /app/frontend/.env. The existing EXPO_PUBLIC_BACKEND_URL is
+             left alone so dev-server / Expo Go / web preview keep using the
+             preview container (hot reload works).
+
+          2) /app/frontend/src/services/api.ts: BASE_URL now selects at
+             bundle-time via `__DEV__` — DEV builds (Metro, Expo Go, web
+             preview) keep hitting the preview URL; RELEASE builds (APK/IPA
+             end-users install) hit the permanent production URL. Fallback to
+             preview URL if PROD is not set, so older envs still work.
+
+          3) Added a 15 s AbortController timeout + readable network error
+             messages ("Sem conexão com o servidor...", "O servidor demorou
+             demais..."). Previously a slow preview container would hang the
+             UI and surface a generic "Falha no login" with no explanation —
+             which is likely what the user kept seeing.
+
+          4) login.tsx and register.tsx now trim+lowercase e-mail and reject
+             obviously malformed addresses before hitting the API (prevents
+             confusing 401s from typos).
+
+          Validated manually on web preview: register with a fresh e-mail
+          returns 200 OK, lands on Home ("Olá, After 👋"), all authenticated
+          calls (alerts, readings/latest, contacts, wound-photos/latest)
+          return 200 OK. No regression. The REAL fix for the user's APK takes
+          effect once they regenerate the Android build via the Publish
+          panel — the new APK will embed the production URL instead of the
+          preview one.
+
+test_plan:
+  current_focus:
+    - "Fix: login/register always fail on installed APK (preview URL points to ephemeral container)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: >
+      Pure frontend fix. Please validate on the web preview that NOTHING
+      regressed around auth: (1) login works with doc.teste@teste.com /
+      senha123 (doctor) and pm.ble@teste.com / senha123 (patient_monitored);
+      (2) register with a brand-new email succeeds and lands on Home; (3) new
+      e-mail validation rejects "notanemail" gracefully with a toast;
+      (4) when the backend is NOT reachable the user sees a readable "Sem
+      conexão..." message (hard to simulate, OK to skip if preview is up);
+      (5) no new console errors; (6) /auth/me on cold-load works when a valid
+      token is already in storage. Do NOT try to validate the APK behavior —
+      that requires regenerating the Android build via EAS, which is a
+      separate step the user triggers from the Publish panel.
