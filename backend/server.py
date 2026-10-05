@@ -912,6 +912,32 @@ async def get_patient(patient_id: str, current=Depends(get_current_user)):
     return user_to_public(patient)
 
 
+@api.post("/doctor/patient/{patient_id}/impersonate")
+async def impersonate_patient(
+    patient_id: str, current=Depends(get_current_user)
+):
+    """Return a fresh JWT for a patient linked to the current doctor.
+
+    Lets a doctor "enter" a patient's phone-view to demo the app or audit
+    what the patient sees. The returned token is signed just like any other
+    patient login — all `/api/*` calls made with it are scoped to that
+    patient's data by `get_current_user`. The doctor's own JWT is NOT
+    revoked; the client stacks them and can restore the doctor session
+    without re-logging-in.
+    """
+    patient = await assert_doctor_owns_patient(current, patient_id)
+    token = create_token(patient["id"])
+    return {
+        "token": token,
+        "user": user_to_public(patient),
+        "impersonated_by": {
+            "id": current["id"],
+            "name": current.get("name"),
+            "role": current.get("role"),
+        },
+    }
+
+
 @api.get("/doctor/patient/{patient_id}/data")
 async def patient_full_data(patient_id: str, current=Depends(get_current_user)):
     patient = await assert_doctor_owns_patient(current, patient_id)

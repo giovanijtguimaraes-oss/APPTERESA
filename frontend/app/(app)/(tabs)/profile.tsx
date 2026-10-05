@@ -47,7 +47,10 @@ export default function ProfileScreen() {
 function handleLogout(logout: () => Promise<void>, router: ReturnType<typeof useRouter>) {
   return async () => {
     await logout();
-    router.replace('/login');
+    // No standalone /login screen — bounce through the splash which will
+    // auto-login the demo doctor again. This gives us a clean "reset
+    // session" even when the user already was Dra. Ana.
+    router.replace('/');
   };
 }
 
@@ -246,11 +249,15 @@ function PatientProfile({
         </Card>
 
         <PrimaryButton
-          label="Sair da conta"
+          label="Reiniciar sessão"
           variant="outline"
           onPress={onLogout}
           testID="btn-logout"
         />
+        <Text style={styles.resetHint}>
+          Encerra a sessão atual e volta automaticamente para o perfil padrão
+          (Dra. Ana).
+        </Text>
         <View style={{ height: spacing.xl }} />
       </ScrollView>
 
@@ -298,7 +305,8 @@ async function deleteContact(
 
 // ============================== DOCTOR ==============================
 function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
-  const { user } = useAuth();
+  const { user, impersonatePatient } = useAuth();
+  const router = useRouter();
   const [patients, setPatients] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<User | null>(null);
@@ -456,15 +464,30 @@ function DoctorProfile({ onLogout }: { onLogout: () => Promise<void> }) {
                 )}
               </>
             )}
+            <View style={{ height: spacing.md }} />
+            <PrimaryButton
+              label={`Entrar como ${selected.name.split(' ')[0]}`}
+              icon={<Ionicons name="phone-portrait" size={16} color={colors.surface} />}
+              onPress={() => enterAsPatient(selected, impersonatePatient, router, setToastDoc)}
+              testID={`btn-enter-as-${selected.id}`}
+            />
+            <Text style={styles.enterAsHint}>
+              Veja o app exatamente como o paciente vê no próprio celular — telemetria BLE,
+              fotos, calendário e avisos. Toque em "Sair" no topo para voltar à sua conta.
+            </Text>
           </Card>
         )}
 
         <PrimaryButton
-          label="Sair da conta"
+          label="Reiniciar sessão"
           variant="outline"
           onPress={onLogout}
           testID="btn-logout"
         />
+        <Text style={styles.resetHint}>
+          Encerra a sessão atual e volta automaticamente para o perfil padrão
+          (Dra. Ana).
+        </Text>
         <View style={{ height: spacing.xl }} />
       </ScrollView>
 
@@ -505,6 +528,24 @@ async function selectPatient(
     setDetail({ photos: [], sessions: [] });
   }
 }
+
+async function enterAsPatient(
+  patient: User,
+  impersonateFn: (patientId: string) => Promise<void>,
+  router: ReturnType<typeof useRouter>,
+  setToast: (t: { msg: string; type: 'success' | 'error' }) => void,
+) {
+  try {
+    await impersonateFn(patient.id);
+    router.replace('/(app)/(tabs)/home');
+  } catch (e: any) {
+    setToast({
+      msg: e?.detail ?? e?.message ?? 'Não foi possível entrar como paciente.',
+      type: 'error',
+    });
+  }
+}
+
 
 // --- Add patient modal (doctor) -----------------------------------------
 function AddPatientModal({
@@ -1143,6 +1184,20 @@ const styles = StyleSheet.create({
   contactItemRole: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  enterAsHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
+  resetHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: spacing.md,
   },
   searchBox: {
     flexDirection: 'row',

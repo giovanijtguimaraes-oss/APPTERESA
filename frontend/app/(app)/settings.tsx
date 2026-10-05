@@ -149,12 +149,13 @@ export default function SettingsScreen() {
           style={styles.logoutBtn}
           onPress={async () => {
             await logout();
-            router.replace('/login');
+            // No login screen — splash will auto-login as Dra. Ana.
+            router.replace('/');
           }}
           testID="settings-logout"
         >
-          <Ionicons name="log-out-outline" size={20} color={colors.redAlert} />
-          <Text style={styles.logoutText}>Sair da conta</Text>
+          <Ionicons name="refresh-outline" size={20} color={colors.redAlert} />
+          <Text style={styles.logoutText}>Reiniciar sessão</Text>
         </Pressable>
 
         <View style={{ height: spacing.xl }} />

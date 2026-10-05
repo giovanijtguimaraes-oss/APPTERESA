@@ -45,7 +45,8 @@ export function AppDrawer({ visible, onClose }: Props) {
   async function handleLogout() {
     onClose();
     await logout();
-    router.replace('/login');
+    // Splash will auto-login the demo doctor again.
+    router.replace('/');
   }
 
   return (
@@ -130,8 +131,8 @@ export function AppDrawer({ visible, onClose }: Props) {
             style={styles.logoutBtn}
             testID="drawer-logout"
           >
-            <Ionicons name="log-out-outline" size={20} color={colors.redAlert} />
-            <Text style={styles.logoutText}>Sair</Text>
+            <Ionicons name="refresh-outline" size={20} color={colors.redAlert} />
+            <Text style={styles.logoutText}>Reiniciar sessão</Text>
           </Pressable>
         </Pressable>
       </Pressable>

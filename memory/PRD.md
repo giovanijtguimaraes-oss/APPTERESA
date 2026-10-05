@@ -114,8 +114,15 @@ sem telemetria → desconectado e tentativa de reconexão (até 5 × 3 s).
 - Médico só vê pacientes vinculados (via `doctor_id`); endpoints `/doctor/*` são 403 para não-médicos.
 - Fotos de ferida: acesso só pelo paciente dono ou médico vinculado.
 
-## Status (iteration 4)
-- 30/30 testes de backend passam.
+## Status (iteration 6 — login removido)
+- 10/10 cenários frontend passam (regressão após remoção de `/login`).
+- 8/8 testes de backend (login + impersonação) continuam passando.
 - Parser `parseTeresaTelemetry` cobre casos válidos / vazios / inválidos / estado desconhecido.
 - Fluxos de frontend validados visualmente para os 3 roles.
 - BLE real precisa de **Development Build / Production Build** nativo (Publish do Emergent).
+
+### Mudança desta iteração — remoção da tela de login
+- `app/login.tsx` deletado. `/` é agora splash + auto-login da Dra. Ana (sem gate de "uma única vez por instalação").
+- Qualquer `router.replace('/login')` foi substituído por `router.replace('/')` que, por sua vez, re-executa o auto-login.
+- Botão "Sair da conta" renomeado para **"Reiniciar sessão"** (profile, settings, drawer). Hint abaixo deixa claro que o app volta automaticamente à Dra. Ana.
+- Em caso de falha de rede no auto-login, o splash exibe um card com "Tentar novamente" + "Diagnóstico" (longo-pressionar o logo também abre o diagnóstico).

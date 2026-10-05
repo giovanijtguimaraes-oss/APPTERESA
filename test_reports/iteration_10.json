@@ -1,0 +1,35 @@
+{
+  "summary": "Validated Dra. Ana default doctor + doctor-impersonates-patient + first-launch auto-login on web preview (390x844). All 7 scenarios (A–G) PASS. Backend: 8/8 pytest cases pass for /api/doctor/patient/{id}/impersonate including role guard (403 patient), ownership guard (403 unlinked), auth guard (401), 404 unknown, and seed-data validation (Dra. Ana CRM/SP 654321, Dermatologia Oncológica, Clínica T.E.R.E.S.A., 3 linked patients: carlos.lima [autonomous], joao.pedro [monitored], maria.helena [monitored]); Dr. Gustavo still present. Frontend: (A) Fresh storage reload lands directly on 'Olá, Dra. Ana 👋'; no login screen flash. (B) Perfil tab shows Perfil do Médico header with Ana's CRM/specialty/hospital and the 3 linked patients listed. (C) After selecting Carlos (patient-item-<id>) the doctor-selected-card renders btn-enter-as-<id>; tapping it switches to Carlos's view ('Olá, Carlos 👋' + autonomous 'Análise da ferida' card). Yellow banner (impersonation-banner) appears top-of-screen with text 'VISUALIZANDO COMO PACIENTE · Carlos Lima · retornar a Dra. Ana · Sair'; banner persists across Calendário and Avisos tab switches. (D) Tapping impersonation-exit returns to Dra. Ana home without any login-screen flash and banner disappears. (E) Perfil → btn-logout lands on login; reload keeps user on login (no auto-login second time); login-demo-submit outline button returns to Ana home. (G) Regression: login-diag-link + diag-trigger still open the diagnostic modal with Backend em uso / Latência; login-go-register still navigates to /register with email/name/password fields. Pre-existing shadow*/pointerEvents/useNativeDriver web-only warnings persist (noted before, not regressions).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Deprecation warning on web preview: 'shadow*' props deprecated — migrate to style.boxShadow. Pre-existing from prior iterations; not blocking APK."},
+      {"component": "props.pointerEvents", "issue": "Deprecation warning on web preview: use style.pointerEvents. Pre-existing; triggered by Toast/Modal mount."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_impersonation.py",
+    "/app/test_reports/pytest/pytest_iter10.xml"
+  ],
+  "action_items": [
+    "No code fixes required — PASS on all 7 user-requested scenarios.",
+    "(Low priority) The yellow banner's second line uses interpunct separators; cosmetic — the requirement said '· Carlos Lima · retornar a Dra. Ana' and the UI shows exactly that (title line is 'VISUALIZANDO COMO PACIENTE').",
+    "(Pre-existing, low priority) migrate shadow* / pointerEvents web deprecation warnings; harmless on APK."
+  ],
+  "critical_code_review_comments": [
+    "backend: /api/doctor/patient/{id}/impersonate correctly chains assert_doctor_owns_patient which calls require_doctor first → 403 for non-doctors and 403/404 for unlinked/unknown patients. Returned token is a standard JWT scoping to the patient. The doctor's token is NOT revoked, which matches the stacked-impersonation design.",
+    "AuthContext: impersonation stack is persisted in AsyncStorage (teresa.impersonation.stack) and the AUTO_LOGIN_ATTEMPTED_KEY flag correctly disables silent demo auto-login after an explicit logout. Verified in Test E (reload after logout stayed on login).",
+    "(app)/_layout.tsx: banner only renders when impersonation.active is true; uses SafeAreaView top edge; the Sair Pressable has 10px hitSlop and testID 'impersonation-exit' — meets 44pt touch target with hitSlop.",
+    "profile.tsx: btn-enter-as-<id> is only rendered inside the 'doctor-selected-card' (i.e., after tapping patient-item-<id>), which matches the UX described."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (A–G all PASS)"},
+  "seed_data_creation": "Backend tests registered 2 disposable TEST_* patient accounts (TEST_imp_<ts>@teste.com, TEST_other_<ts>@teste.com) to probe the role/ownership guards. Dra. Ana (ana@teresa.med.br) and her 3 linked patients were already seeded by main agent; verified present in both /api/auth/login and /api/doctor/patients responses.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dra. Ana demo doctor + 3 linked patients (Carlos autonomous, João & Maria monitored) are live on both preview and production per credentials file. Impersonation endpoint POST /api/doctor/patient/{id}/impersonate returns {token, user, impersonated_by}. Frontend stacks tokens in AuthContext (teresa.impersonation.stack) and gates auto-login via teresa.autoLogin.attempted. Login screen testIDs: login-email, login-password, login-submit, login-demo-submit, login-go-register, login-diag-link, diag-trigger. Impersonation testIDs: patient-item-<id>, doctor-selected-card, btn-enter-as-<id>, impersonation-banner, impersonation-exit, btn-logout.",
+  "rca_of_issue": "N/A — feature validation, no bug."
+}

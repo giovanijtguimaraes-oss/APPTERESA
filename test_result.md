@@ -383,18 +383,112 @@ agent_communication:
       (2) Tap the new "Verificar conexão com servidor" link below "Criar
       conta". The modal must open and show: backend URL (contains
       "wound-healing-1"), tipo de build = "DEV (preview/Expo Go)" on the
-      web preview, HTTP 200, latency < 2 s. "Testar novamente" button must
-      re-run the ping.
-      (3) Long-press the medical logo (1.5 s) — must open the same modal.
-      (4) Close modal, continue to login — no regression.
-      (5) Register flow still works with a brand-new email.
-      (6) E-mail validation still rejects "notanemail" before the API call.
-      (7) No new console errors.
 
-      Do NOT try to validate the APK behavior — that needs a new EAS build.
-      This retest is only about regression + the new diagnostic UI.
+frontend:
+  - task: "Dra. Ana demo profile + doctor-impersonates-patient + first-launch auto-login"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py, /app/frontend/src/contexts/AuthContext.tsx, /app/frontend/app/(app)/_layout.tsx, /app/frontend/app/(app)/(tabs)/profile.tsx, /app/frontend/app/login.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: >
+          Three features bundled per user request:
 
-      (5) no new console errors; (6) /auth/me on cold-load works when a valid
-      token is already in storage. Do NOT try to validate the APK behavior —
-      that requires regenerating the Android build via EAS, which is a
-      separate step the user triggers from the Publish panel.
+          (1) Default demo doctor "Dra. Ana". Seeded in LOCAL and PRODUCTION
+          backends: `ana@teresa.med.br` / `ana123`, CRM/SP 654321,
+          Dermatologia Oncológica, Clínica T.E.R.E.S.A., plus 3 linked demo
+          patients: Carlos Lima (patient_autonomous, Queimadura 2º grau),
+          João Pedro (patient_monitored, Úlcera por pressão), Maria Helena
+          (patient_monitored, Pé diabético). Credentials for patients also
+          work: *@teresa.pct / `paciente123`.
+
+          (2) First-launch silent auto-login. The AuthContext now boots
+          via: (a) existing SecureStore token → /auth/me; if that fails
+          (first install OR expired/invalidated token on first install
+          only), (b) tries ONE auto-login as the demo doctor; (c) sets a
+          persistent `teresa.autoLogin.attempted = 'yes'` flag in
+          AsyncStorage so subsequent cold-starts after an explicit logout
+          don't re-sign-in silently. On the login screen there's also a
+          clearly labelled "Entrar como Dra. Ana (demo)" outline button
+          (testID `login-demo-submit`) that reuses the same credentials.
+
+          (3) Doctor-impersonates-patient. New backend endpoint
+          `POST /api/doctor/patient/{patient_id}/impersonate` returns a
+          fresh JWT signed for the patient (guarded by
+          `assert_doctor_owns_patient`). Client-side the AuthContext keeps
+          an impersonation STACK persisted in AsyncStorage; the active
+          token/user are swapped so EVERY `/api/*` call is scoped to the
+          patient's data (readings, alerts, wound-photos, calendar, BLE).
+          A global banner lives in `(app)/_layout.tsx`
+          (testID `impersonation-banner`) with a "Sair" button (testID
+          `impersonation-exit`) that pops the stack and restores the
+          doctor's session WITHOUT re-authenticating. New button
+          "Entrar como <FirstName>" (testID `btn-enter-as-<id>`) appears
+          inside the selected-patient card in Profile tab for doctors only
+          — role-gated client-side AND server-side.
+
+          Verified manually on the web preview: fresh install lands on
+          Dra. Ana's Home ("Olá, Dra. Ana 👋"), Profile tab shows the 3
+          seeded patients, tapping Carlos → "Entrar como Carlos" opens
+          his autonomous-patient Home with the yellow banner
+          "VISUALIZANDO COMO PACIENTE · Carlos Lima · retornar a Dra. Ana",
+          tapping "Sair" restores Dra. Ana. No regression on the previous
+          auth / BLE / diagnostic flows.
+
+test_plan:
+  current_focus:
+    - "Login screen removal + always-on auto-login as Dra. Ana + Reiniciar sessão flow"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: >
+      REMOVED the standalone login screen. The app now always auto-logs-in
+      as Dra. Ana on startup (every launch, not once-per-install anymore).
+      File `/app/frontend/app/login.tsx` was deleted; all redirects to
+      `/login` were replaced with `/` (which is now the splash that handles
+      auto-login).
+
+      Changes to validate on web preview:
+      (1) Fresh load (hard reload or clear storage) → splash → Dra. Ana
+          Home automatically, zero taps required. No login screen visible.
+      (2) Profile tab for the doctor renders. The former "Sair da conta"
+          button was relabeled to "Reiniciar sessão" + a hint text
+          ("Encerra a sessão atual e volta automaticamente para o perfil
+          padrão (Dra. Ana).") — testID stays `btn-logout`.
+      (3) Tap "Reiniciar sessão" → logout runs, splash flashes, and the
+          app lands BACK on Dra. Ana's Home (NOT a login screen). This is
+          the key regression check.
+      (4) Impersonation still works end-to-end:
+          Profile → tap Carlos → "Entrar como Carlos" → yellow banner at
+          top; tapping banner "Sair" (testID `impersonation-exit`) returns
+          to Dra. Ana without showing a login screen.
+      (5) Backend diagnostic: on the splash (/) long-press the medical
+          logo for 1.5s → the same connection diagnostic modal we had on
+          the old login should open (testID `splash-diag-trigger`).
+      (6) If the backend is unreachable, the splash must switch to an
+          error card with "Tentar novamente" + "Diagnóstico" buttons
+          instead of being stuck on a spinner. (You can simulate failure
+          by killing the backend service momentarily — but this is a nice
+          to have, not blocking.)
+      (7) Settings → "Reiniciar sessão" button at bottom still works.
+      (8) No regression on previously validated flows: Calendar / Avisos /
+          BLE connect / Wound-Analysis pages must still load, especially
+          while impersonating a patient (same scope rules as before).
+      (9) No new console errors.
+
+      Backend creds (both LOCAL and PROD):
+        - doctor demo: ana@teresa.med.br / ana123
+        - gustavo: gustavo@teresa.med.br / gustavo123
+        - patients: joao.pedro@teresa.pct / paciente123 (monitored)
+                    maria.helena@teresa.pct / paciente123 (monitored)
+                    carlos.lima@teresa.pct / paciente123 (autonomous)
+
+      Do NOT re-validate APK behavior — that needs a new EAS build which
+      the user triggers from the Publish panel after this regression test.
