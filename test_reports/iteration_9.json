@@ -1,0 +1,32 @@
+{
+  "summary": "Regression test for the login diagnostic UI + login/register flows after api.ts BASE_URL simplification. All 6 scenarios (A-F) PASS on preview web. Dr. Gustavo logs in and lands on doctor Home ('Olá, Dr. Gustavo'). Diagnostic modal opens from both 'Verificar conexão com servidor' link (login-diag-link) and 1.5s long-press on the medical logo (diag-trigger). Modal displays Backend URL (https://wound-healing-1.preview.emergentagent.com), build type 'DEV (preview/Expo Go)', 'Servidor respondeu ✅ SIM', HTTP 200, Latência 38 ms. 'Testar novamente' re-runs ping; 'Fechar' dismisses. 'Criar conta' navigates to /register, submitting a new patient_monitored account lands on patient_monitored Home with 'Sistema de aquecimento' + 'DESCONECTADO'. Invalid email 'notanemail' shows 'E-mail inválido' toast and performs no API call. Only pre-existing console warnings observed (shadow*, pointerEvents, useNativeDriver) — no new errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Deprecation warning on web: use style.boxShadow instead of shadow* props. Pre-existing from previous iterations; not blocking."},
+      {"component": "props.pointerEvents", "issue": "Deprecation warning on web: use style.pointerEvents. Pre-existing; triggered when Toast mounts."},
+      {"component": "Animated useNativeDriver", "issue": "Warning: 'useNativeDriver is not supported because the native animated module is missing' on web preview. Pre-existing; harmless on web."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "No new fixes required for this iteration. The diagnostic UI (login-diag-link + diag-trigger) is wired correctly and renders the expected fields with correct values.",
+    "To fully close the user's original bug, a fresh EAS APK build must be produced so the installed APK picks up EXPO_PUBLIC_PROD_BACKEND_URL=https://wound-healing-1.emergent.host (out of scope for the testing agent).",
+    "Optional cleanup (low priority): migrate shadow* / pointerEvents / useNativeDriver warnings — pre-existing and not caused by this change."
+  ],
+  "critical_code_review_comments": [
+    "api.ts BASE_URL selector '__DEV__ ? PREVIEW : (PROD || PREVIEW)' is Metro-DCE friendly and correct.",
+    "pingBackend() returns a well-typed BackendDiagnostic with safe timeout (10s) and no secrets leaked.",
+    "Login modal correctly reuses PrimaryButton, Modal, and the Pressable+onLongPress pattern — delayLongPress=1500ms works via Playwright mouse down/up on web preview."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created one disposable patient_monitored account during Test D (test_<ts>@teste.com / senha123). Dr. Gustavo (gustavo@teresa.med.br) was already present.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login diagnostic UI is live. Preview backend https://wound-healing-1.preview.emergentagent.com healthy (GET /api/ -> 200). Dr. Gustavo doctor account exists locally and in production. Pre-existing web-only warnings (shadow*, pointerEvents, useNativeDriver) are expected noise and NOT regressions.",
+  "rca_of_issue": "User reports APK login failures. Root cause (confirmed via code review): APK was built before EXPO_PUBLIC_PROD_BACKEND_URL was added to frontend/.env, so the release bundle still hard-codes the preview URL via __DEV__=false branch returning undefined (previously). Fix in this iteration: (a) BASE_URL now falls back to PREVIEW_URL when PROD_URL is missing (safer for old builds), (b) a visible diagnostic surface lets end-users verify which backend their APK hits. Full remediation requires a new EAS build; the testing agent cannot trigger APK builds."
+}

@@ -289,6 +289,111 @@ agent_communication:
       e-mail validation rejects "notanemail" gracefully with a toast;
       (4) when the backend is NOT reachable the user sees a readable "Sem
       conexão..." message (hard to simulate, OK to skip if preview is up);
+
+frontend:
+  - task: "Fix (iter 2): recurring 'login/register fails on APK' — add in-app diagnostic + Metro-friendly URL selector"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/services/api.ts, /app/frontend/app/login.tsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: >
+          User reported recurrence of "Sempre quando efetuo o login ou crio
+          uma conta no apk não funciona" DESPITE the previous fix adding
+          EXPO_PUBLIC_PROD_BACKEND_URL. Protocol followed:
+
+          1. Verified prod backend end-to-end via curl: register 200 OK,
+             login 200 OK, GET /api/ 200 OK, response time < 1s, Cloudflare
+             TLS OK. Backend is NOT the problem.
+
+          2. Called integration_expert for canonical JWT auth playbook.
+             Cross-checked against our implementation — field name
+             consistency (backend returns `token`, client reads `res.token`),
+             Authorization header (`Bearer <jwt>`), SecureStore adapter,
+             token persistence (saveToken awaited before setToken/setUser),
+             CORS (OPTIONS 200 in logs). All consistent with the playbook.
+
+          3. Two issues confirmed by the playbook:
+
+             a) "EAS embeds EXPO_PUBLIC_* values while Metro creates the
+                bundle; changing .env after building does not change an
+                already-installed APK." — the user's current APK was built
+                BEFORE the EXPO_PUBLIC_PROD_BACKEND_URL var was added, so it
+                still points at the preview URL. The fix NEEDS a new APK
+                build (the user needs to re-run the Publish → Android build
+                step).
+
+             b) To make debugging possible for end-users without adb logcat,
+                the playbook explicitly recommends: "add a one-time screen
+                showing the non-secret API host. This catches a production
+                bundle still pointing to localhost or a preview URL."
+
+          Changes in this iteration (all frontend, additive):
+
+          - /app/frontend/src/services/api.ts:
+              • Simplified BASE_URL selector to `__DEV__ ? PREVIEW : (PROD || PREVIEW)`
+                so Metro's dead-code elimination unambiguously picks a single
+                branch per bundle (no more `typeof __DEV__` dance).
+              • Exported `BASE_URL` + `IS_DEV_BUILD` + new `pingBackend()`
+                helper (returns reachable, http_status, latency_ms, error).
+
+          - /app/frontend/app/login.tsx:
+              • New "Verificar conexão com servidor" link at the bottom of
+                the login form (testID=`login-diag-link`).
+              • Long-press (1.5 s) on the logo also opens the diagnostic
+                (testID=`diag-trigger`).
+              • Modal shows: backend URL in use, build type
+                (DEV vs PRODUÇÃO), whether the server responded, HTTP status,
+                latency, and a user-readable hint when the APK can't reach
+                the prod URL ("baixe o novo APK no painel do Emergent e
+                reinstale").
+
+          Validated manually on web preview: modal opens, pings
+          `https://wound-healing-1.preview.emergentagent.com/api/`, shows
+          "✅ SIM · 200 · 329 ms · DEV (preview/Expo Go)". No regression on
+          login/register flow.
+
+          For the APK retest, the user will:
+            1. Trigger a new Publish → Android Build (so the new bundle
+               embeds `EXPO_PUBLIC_PROD_BACKEND_URL=https://wound-healing-1.emergent.host`).
+            2. Install the new .apk.
+            3. If login still fails, long-press the logo (or tap "Verificar
+               conexão...") to see EXACTLY which URL the APK is hitting,
+               whether the server responded, and what error was returned.
+               That one screenshot will tell us conclusively what's wrong.
+
+test_plan:
+  current_focus:
+    - "Fix (iter 2): recurring 'login/register fails on APK' — add in-app diagnostic + Metro-friendly URL selector"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: >
+      Pure frontend changes. Please validate on the web preview:
+      (1) Login flow still works for Dr. Gustavo (`gustavo@teresa.med.br` /
+      `gustavo123`); if that account is missing, create via POST
+      /api/auth/register with role doctor.
+      (2) Tap the new "Verificar conexão com servidor" link below "Criar
+      conta". The modal must open and show: backend URL (contains
+      "wound-healing-1"), tipo de build = "DEV (preview/Expo Go)" on the
+      web preview, HTTP 200, latency < 2 s. "Testar novamente" button must
+      re-run the ping.
+      (3) Long-press the medical logo (1.5 s) — must open the same modal.
+      (4) Close modal, continue to login — no regression.
+      (5) Register flow still works with a brand-new email.
+      (6) E-mail validation still rejects "notanemail" before the API call.
+      (7) No new console errors.
+
+      Do NOT try to validate the APK behavior — that needs a new EAS build.
+      This retest is only about regression + the new diagnostic UI.
+
       (5) no new console errors; (6) /auth/me on cold-load works when a valid
       token is already in storage. Do NOT try to validate the APK behavior —
       that requires regenerating the Android build via EAS, which is a

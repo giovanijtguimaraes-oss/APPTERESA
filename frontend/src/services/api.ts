@@ -14,15 +14,20 @@
 
 import { storage } from '@/src/utils/storage';
 
-// `__DEV__` is injected by Metro: true when running from the dev-server /
-// Expo Go, false in a release binary. Fallback to the preview URL if the
-// prod URL is not provided (keeps older envs working).
+// Metro replaces `__DEV__` with the literal boolean at bundle time and dead
+// code elimination picks a single branch per build:
+//   - DEV builds (Metro dev-server, Expo Go, web preview) → preview URL
+//   - RELEASE builds (built APK/IPA)                      → production URL
+// `EXPO_PUBLIC_*` vars are inlined via static dot-notation (NOT bracket
+// notation, NOT destructuring — Metro would not replace those).
+// Fallback to preview URL if PROD is missing so old builds keep working.
 declare const __DEV__: boolean;
-const DEV_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const PREVIEW_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const PROD_URL = process.env.EXPO_PUBLIC_PROD_BACKEND_URL;
-const BASE_URL = (typeof __DEV__ !== 'undefined' && __DEV__
-  ? DEV_URL
-  : (PROD_URL || DEV_URL)) as string;
+export const BASE_URL = (__DEV__
+  ? PREVIEW_URL
+  : PROD_URL || PREVIEW_URL) as string;
+export const IS_DEV_BUILD = __DEV__ === true;
 
 export type ApiError = { status: number; detail: string };
 
@@ -112,6 +117,57 @@ export const api = {
     request<T>('PATCH', p, body, auth),
   del: <T>(p: string, auth = true) => request<T>('DELETE', p, undefined, auth),
 };
+
+// ----------------------------------------------------------------------------
+// Diagnostic helpers — surfaced on the login screen so end-users can see which
+// backend their APK is actually talking to (the #1 cause of "APK can't log in"
+// reports is a stale APK pointing to a dev/preview URL that has gone away).
+// None of these return secrets.
+// ----------------------------------------------------------------------------
+export interface BackendDiagnostic {
+  base_url: string;
+  is_dev_build: boolean;
+  reachable: boolean;
+  http_status: number | null;
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export async function pingBackend(): Promise<BackendDiagnostic> {
+  const started = Date.now();
+  const controller =
+    typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 10000) : null;
+  try {
+    const res = await fetch(`${BASE_URL}/api/`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller?.signal,
+    });
+    return {
+      base_url: BASE_URL,
+      is_dev_build: IS_DEV_BUILD,
+      reachable: res.ok,
+      http_status: res.status,
+      latency_ms: Date.now() - started,
+      error: null,
+    };
+  } catch (e: any) {
+    const isAbort = e?.name === 'AbortError';
+    return {
+      base_url: BASE_URL,
+      is_dev_build: IS_DEV_BUILD,
+      reachable: false,
+      http_status: null,
+      latency_ms: Date.now() - started,
+      error: isAbort
+        ? 'Timeout: o servidor demorou demais para responder.'
+        : (e?.message ?? 'Falha de rede'),
+    };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 // ============ Types ============
 export type Role = 'doctor' | 'patient_monitored' | 'patient_autonomous';

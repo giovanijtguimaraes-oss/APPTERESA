@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/src/components/PrimaryButton';
 import { Toast } from '@/src/components/Toast';
 import { useAuth } from '@/src/contexts/AuthContext';
+import { type BackendDiagnostic, pingBackend } from '@/src/services/api';
 import { colors, radii, shadows, spacing, typography } from '@/src/theme/tokens';
 
 export default function LoginScreen() {
@@ -23,6 +26,21 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diag, setDiag] = useState<BackendDiagnostic | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+
+  async function runDiagnostic() {
+    setDiagOpen(true);
+    setDiagLoading(true);
+    setDiag(null);
+    try {
+      const result = await pingBackend();
+      setDiag(result);
+    } finally {
+      setDiagLoading(false);
+    }
+  }
 
   async function handleSubmit() {
     const cleanEmail = email.trim().toLowerCase();
@@ -52,9 +70,14 @@ export default function LoginScreen() {
         bottomOffset={24}
       >
         <View style={styles.brandWrap}>
-          <View style={styles.logoIcon}>
+          <Pressable
+            onLongPress={runDiagnostic}
+            delayLongPress={1500}
+            style={styles.logoIcon}
+            testID="diag-trigger"
+          >
             <Ionicons name="medical" size={32} color={colors.surface} />
-          </View>
+          </Pressable>
           <Text style={styles.brand}>T.E.R.E.S.A.</Text>
           <Text style={styles.tag}>
             Tecnologia Especializada em Recuperação e Estímulo à Saúde Avançada
@@ -111,6 +134,15 @@ export default function LoginScreen() {
               Não tem conta? <Text style={styles.linkAccent}>Criar conta</Text>
             </Text>
           </Pressable>
+
+          <Pressable
+            onPress={runDiagnostic}
+            style={styles.diagLink}
+            testID="login-diag-link"
+          >
+            <Ionicons name="information-circle-outline" size={14} color={colors.textSecondary} />
+            <Text style={styles.diagLinkText}>Verificar conexão com servidor</Text>
+          </Pressable>
         </View>
       </KeyboardAwareScrollView>
 
@@ -122,7 +154,106 @@ export default function LoginScreen() {
           onHide={() => setToast(null)}
         />
       )}
+
+      <Modal
+        visible={diagOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDiagOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="pulse" size={22} color={colors.primary} />
+              <Text style={styles.modalTitle}>Diagnóstico de conexão</Text>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              {diagLoading && (
+                <Text style={styles.diagRow}>Testando conexão com o servidor…</Text>
+              )}
+              {diag && (
+                <>
+                  <DiagLine label="Backend em uso" value={diag.base_url} mono />
+                  <DiagLine
+                    label="Tipo de build"
+                    value={diag.is_dev_build ? 'DEV (preview/Expo Go)' : 'PRODUÇÃO (APK/IPA)'}
+                  />
+                  <DiagLine
+                    label="Servidor respondeu"
+                    value={diag.reachable ? '✅ SIM' : '❌ NÃO'}
+                    color={diag.reachable ? colors.greenGood : colors.redAlert}
+                  />
+                  {diag.http_status != null && (
+                    <DiagLine label="Status HTTP" value={String(diag.http_status)} />
+                  )}
+                  {diag.latency_ms != null && (
+                    <DiagLine label="Latência" value={`${diag.latency_ms} ms`} />
+                  )}
+                  {diag.error && (
+                    <DiagLine
+                      label="Erro"
+                      value={diag.error}
+                      color={colors.redAlert}
+                    />
+                  )}
+                  {!diag.reachable && !diag.is_dev_build && (
+                    <View style={styles.diagHint}>
+                      <Text style={styles.diagHintText}>
+                        Este APK não consegue falar com o servidor de produção.
+                        Verifique sua internet. Se o problema persistir, pode ser
+                        um APK antigo apontando para um servidor antigo — baixe
+                        o novo APK no painel do Emergent e reinstale.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <PrimaryButton
+                label="Testar novamente"
+                variant="outline"
+                onPress={runDiagnostic}
+                loading={diagLoading}
+                fullWidth={false}
+              />
+              <PrimaryButton
+                label="Fechar"
+                onPress={() => setDiagOpen(false)}
+                fullWidth={false}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function DiagLine({
+  label,
+  value,
+  mono,
+  color,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  color?: string;
+}) {
+  return (
+    <View style={styles.diagLineRow}>
+      <Text style={styles.diagLineLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.diagLineValue,
+          mono && styles.diagMono,
+          color ? { color } : null,
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -206,5 +337,86 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  diagLink: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  diagLinkText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(10,25,48,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadows.floating,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalTitle: {
+    ...typography.h4,
+    color: colors.textPrimary,
+  },
+  modalBody: {
+    maxHeight: 320,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  diagRow: {
+    ...typography.body,
+    color: colors.textSecondary,
+    paddingVertical: 6,
+  },
+  diagLineRow: {
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  diagLineLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  diagLineValue: {
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  diagMono: {
+    fontFamily: 'Menlo',
+    fontSize: 13,
+  },
+  diagHint: {
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    backgroundColor: '#FEF3C7',
+    borderRadius: radii.md,
+  },
+  diagHintText: {
+    ...typography.caption,
+    color: '#92400E',
+    lineHeight: 18,
   },
 });
